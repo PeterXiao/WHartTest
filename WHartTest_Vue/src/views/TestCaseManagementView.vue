@@ -107,6 +107,11 @@ const startAutomationTask = (
     (sessionId) => {
       localStorage.setItem('langgraph_session_id', sessionId);
 
+      // 保存提示词ID，使LangGraphChatView能恢复选中状态
+      if (requestData.prompt_id) {
+        localStorage.setItem('wharttest_selected_prompt_id', String(requestData.prompt_id));
+      }
+
       const notificationReturn = Notification.info({
         title: notificationTitle,
         content: notificationContent,

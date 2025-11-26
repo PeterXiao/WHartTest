@@ -29,26 +29,20 @@
           <span class="prompt-label">提示词：</span>
           <a-select
             v-model="selectedPromptId"
-            :placeholder="selectedPromptId === null && defaultPrompt ? defaultPrompt.name : '选择提示词'"
+            :placeholder="defaultPrompt ? defaultPrompt.name : '选择提示词'"
             style="width: 200px"
             allow-clear
             @change="handlePromptChange"
             :loading="promptsLoading"
           >
             <a-option
-              :value="null"
-              :label="defaultPrompt ? defaultPrompt.name : '使用默认'"
-            >
-              <span>{{ defaultPrompt ? defaultPrompt.name : '使用默认' }}</span>
-              <a-tag v-if="defaultPrompt" color="blue" size="small" style="margin-left: 8px;">默认</a-tag>
-            </a-option>
-            <a-option
-              v-for="prompt in nonDefaultUserPrompts"
+              v-for="prompt in userPrompts"
               :key="prompt.id"
               :value="prompt.id"
               :label="prompt.name"
             >
               <span>{{ prompt.name }}</span>
+              <a-tag v-if="prompt.is_default" color="blue" size="small" style="margin-left: 8px;">默认</a-tag>
             </a-option>
           </a-select>
         </div>
@@ -137,11 +131,6 @@ const userPrompts = ref<UserPrompt[]>([]);
 const defaultPrompt = ref<UserPrompt | null>(null);
 const promptsLoading = ref(false);
 
-// 过滤掉默认提示词的用户提示词列表（避免重复显示）
-const nonDefaultUserPrompts = computed(() => {
-  return userPrompts.value.filter(prompt => !prompt.is_default);
-});
-
 // 加载用户提示词
 const loadUserPrompts = async () => {
   console.log('🔄 ChatHeader开始加载提示词数据...');
@@ -197,10 +186,10 @@ const loadUserPrompts = async () => {
       defaultPrompt.value = defaultResponse.data;
       console.log('🌟 ChatHeader加载到的默认提示词:', defaultPrompt.value.name);
 
-      // 如果当前没有选择提示词且有默认提示词，则初始化为使用默认提示词
+      // 如果当前没有选择提示词且有默认提示词，则自动选中默认提示词
       if (selectedPromptId.value === null && !props.selectedPromptId) {
-        // 不需要设置selectedPromptId，保持null表示使用默认
-        emit('update:selected-prompt-id', null);
+        selectedPromptId.value = defaultPrompt.value.id;
+        emit('update:selected-prompt-id', defaultPrompt.value.id);
       }
     } else {
       console.log('❌ ChatHeader未找到默认提示词');

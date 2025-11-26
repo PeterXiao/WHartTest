@@ -1807,6 +1807,9 @@ onActivated(async () => {
   // 每次组件被激活时（从其他页面切回来）
   console.log('✅ Chat component activated.');
 
+  // 0. 加载保存的提示词ID（从其他页面跳转时可能已更新）
+  loadSavedPromptId();
+
   // 1. 刷新左侧的会话列表
   await loadSessionsFromServer();
 
