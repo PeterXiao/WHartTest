@@ -73,7 +73,6 @@
 import { ref, onMounted, watch } from 'vue';
 import {
   Message,
-  Switch as ASwitch,
   Select as ASelect,
   Option as AOption,
   Button as AButton,
@@ -129,9 +128,13 @@ const fetchKnowledgeBases = async () => {
 
     knowledgeBases.value = kbList;
 
-    // 如果当前选中的知识库不在列表中，清除选择
-    if (props.selectedKnowledgeBaseId && !kbList.find(kb => kb.id === props.selectedKnowledgeBaseId)) {
-      emit('update:selected-knowledge-base-id', null);
+    // 如果当前选中的知识库不在列表中，默认选择第一个
+    if (!props.selectedKnowledgeBaseId || !kbList.find(kb => kb.id === props.selectedKnowledgeBaseId)) {
+      if (kbList.length > 0) {
+        emit('update:selected-knowledge-base-id', kbList[0].id);
+      } else {
+        emit('update:selected-knowledge-base-id', null);
+      }
     }
   } catch (error) {
     console.error('获取知识库列表失败:', error);
