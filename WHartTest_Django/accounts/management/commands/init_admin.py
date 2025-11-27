@@ -173,6 +173,9 @@ class Command(BaseCommand):
                 )
             )
         
+        # 初始化知识库全局配置（使用Ollama默认配置）
+        self._initialize_knowledge_global_config(admin_user)
+        
         self.stdout.write(
             self.style.SUCCESS(
                 '\n========================================\n'
@@ -218,4 +221,45 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(
                 self.style.ERROR(f'❌ 初始化管理员提示词失败: {e}')
+            )
+    
+    def _initialize_knowledge_global_config(self, admin_user):
+        """初始化知识库全局配置（使用Ollama默认配置）"""
+        try:
+            from knowledge.models import KnowledgeGlobalConfig
+            
+            # 获取或创建配置（单例模式）
+            config = KnowledgeGlobalConfig.get_config()
+            
+            # 检查是否是默认配置（通过检查updated_by是否为空）
+            if config.updated_by is None:
+                # 设置Ollama默认配置（Docker Compose服务名为bge-m3）
+                config.embedding_service = 'ollama'
+                config.api_base_url = os.environ.get('OLLAMA_API_BASE_URL', 'http://bge-m3:11434')
+                config.api_key = ''  # Ollama不需要API Key
+                config.model_name = os.environ.get('OLLAMA_EMBEDDING_MODEL', 'bge-m3')
+                config.chunk_size = 1000
+                config.chunk_overlap = 200
+                config.updated_by = admin_user
+                config.save()
+                
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'\n成功初始化知识库全局配置:\n'
+                        f'  嵌入服务: Ollama\n'
+                        f'  API地址: {config.api_base_url}\n'
+                        f'  嵌入模型: {config.model_name}\n'
+                        f'  分块大小: {config.chunk_size}\n'
+                        f'  分块重叠: {config.chunk_overlap}\n'
+                        f'  ℹ️  可在【知识库管理】>【知识库配置】中修改'
+                    )
+                )
+            else:
+                self.stdout.write(
+                    self.style.WARNING('知识库全局配置已存在，跳过初始化')
+                )
+                
+        except Exception as e:
+            self.stdout.write(
+                self.style.ERROR(f'❌ 初始化知识库全局配置失败: {e}')
             )

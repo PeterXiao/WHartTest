@@ -3,19 +3,20 @@ import threading
 import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from django.db import transaction
 from django.db import models
 from django.utils import timezone
 from wharttest_django.viewsets import BaseModelViewSet
-from .models import KnowledgeBase, Document, DocumentChunk, QueryLog
+from .models import KnowledgeBase, Document, DocumentChunk, QueryLog, KnowledgeGlobalConfig
 from .serializers import (
     KnowledgeBaseSerializer, DocumentUploadSerializer, DocumentSerializer,
     DocumentChunkSerializer, QueryLogSerializer, KnowledgeQuerySerializer,
-    KnowledgeQueryResponseSerializer
+    KnowledgeQueryResponseSerializer, KnowledgeGlobalConfigSerializer
 )
 from .services import KnowledgeBaseService, VectorStoreManager
 import logging
@@ -25,12 +26,50 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+class KnowledgeGlobalConfigView(APIView):
+    """知识库全局配置视图（单例模式）"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """获取全局配置"""
+        config = KnowledgeGlobalConfig.get_config()
+        serializer = KnowledgeGlobalConfigSerializer(config)
+        data = serializer.data
+        # 对API Key进行脱敏处理
+        if data.get('api_key'):
+            api_key = data['api_key']
+            if len(api_key) > 8:
+                data['api_key'] = api_key[:4] + '*' * (len(api_key) - 8) + api_key[-4:]
+            else:
+                data['api_key'] = '*' * len(api_key)
+        return Response(data)
+
+    def put(self, request):
+        """更新全局配置（仅管理员可操作）"""
+        if not request.user.is_superuser:
+            return Response(
+                {'error': '只有管理员可以修改全局配置'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        config = KnowledgeGlobalConfig.get_config()
+        serializer = KnowledgeGlobalConfigSerializer(config, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save(updated_by=request.user)
+            # 清理全局配置缓存和嵌入模型缓存，使新配置立即生效
+            VectorStoreManager.clear_global_config_cache()
+            VectorStoreManager._embeddings_cache.clear()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 class KnowledgeBaseViewSet(BaseModelViewSet):
     """知识库视图集"""
     queryset = KnowledgeBase.objects.all()
     serializer_class = KnowledgeBaseSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['project', 'is_active', 'embedding_service']
+    filterset_fields = ['project', 'is_active']
     search_fields = ['name', 'description']
     ordering_fields = ['created_at', 'updated_at', 'name']
     ordering = ['-created_at']
@@ -619,7 +658,7 @@ class QueryLogViewSet(BaseModelViewSet):
 def embedding_services(request):
     """获取可用的嵌入服务选项"""
     services = []
-    for value, label in KnowledgeBase.EMBEDDING_SERVICE_CHOICES:
+    for value, label in KnowledgeGlobalConfig.EMBEDDING_SERVICE_CHOICES:
         services.append({
             'value': value,
             'label': label

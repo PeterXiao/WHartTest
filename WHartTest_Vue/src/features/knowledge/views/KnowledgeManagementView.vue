@@ -3,6 +3,10 @@
     <div v-if="!selectedKB" class="page-header">
       <h1 class="page-title">知识库管理</h1>
       <div class="header-actions">
+        <a-button @click="showConfigModal" style="margin-right: 8px">
+          <template #icon><icon-settings /></template>
+          知识库配置
+        </a-button>
         <a-button type="primary" @click="showCreateModal">
           <template #icon><icon-plus /></template>
           新建知识库
@@ -112,19 +116,27 @@
       @close="closeStatsModal"
     />
 
+    <!-- 全局配置弹窗 -->
+    <KnowledgeGlobalConfigModal
+      :visible="isConfigModalVisible"
+      @close="closeConfigModal"
+      @saved="onConfigSaved"
+    />
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { Message } from '@arco-design/web-vue';
-import { IconPlus } from '@arco-design/web-vue/es/icon';
+import { IconPlus, IconSettings } from '@arco-design/web-vue/es/icon';
 import { useProjectStore } from '@/store/projectStore';
 import { KnowledgeService } from '../services/knowledgeService';
 import type { KnowledgeBase } from '../types/knowledge';
 import KnowledgeBaseDetail from '../components/KnowledgeBaseDetail.vue';
 import KnowledgeBaseFormModal from '../components/KnowledgeBaseFormModal.vue';
 import KnowledgeBaseStatsModal from '../components/KnowledgeBaseStatsModal.vue';
+import KnowledgeGlobalConfigModal from '../components/KnowledgeGlobalConfigModal.vue';
 
 const projectStore = useProjectStore();
 
@@ -137,6 +149,7 @@ const selectedKB = ref<KnowledgeBase | null>(null);
 const editingKB = ref<KnowledgeBase | null>(null);
 const isFormModalVisible = ref(false);
 const isStatsModalVisible = ref(false);
+const isConfigModalVisible = ref(false);
 const statsKBId = ref('');
 
 // 分页配置
@@ -327,6 +340,19 @@ const viewStatistics = (kb: KnowledgeBase) => {
 const closeStatsModal = () => {
   isStatsModalVisible.value = false;
   statsKBId.value = '';
+};
+
+const showConfigModal = () => {
+  isConfigModalVisible.value = true;
+};
+
+const closeConfigModal = () => {
+  isConfigModalVisible.value = false;
+};
+
+const onConfigSaved = () => {
+  // 配置保存后可以刷新列表或执行其他操作
+  Message.success('全局配置已更新');
 };
 
 const refreshKnowledgeBases = () => {

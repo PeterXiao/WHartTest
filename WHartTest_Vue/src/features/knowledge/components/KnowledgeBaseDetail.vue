@@ -41,14 +41,6 @@
         <div class="info-section">
           <h4>配置信息</h4>
           <div class="info-item">
-            <span class="label">嵌入服务:</span>
-            <span class="value">{{ getEmbeddingServiceDisplayName(knowledgeBase.embedding_service) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="label">模型名称:</span>
-            <span class="value">{{ knowledgeBase.model_name }}</span>
-          </div>
-          <div class="info-item">
             <span class="label">分块大小:</span>
             <span class="value">{{ knowledgeBase.chunk_size }}</span>
           </div>
@@ -56,18 +48,6 @@
             <span class="label">分块重叠:</span>
             <span class="value">{{ knowledgeBase.chunk_overlap }}</span>
           </div>
-          
-          <!-- API配置信息（如果有的话） -->
-          <template v-if="hasApiConfig">
-            <div class="info-item" v-if="knowledgeBase.api_base_url">
-              <span class="label">API基础URL:</span>
-              <span class="value">{{ knowledgeBase.api_base_url }}</span>
-            </div>
-            <div class="info-item" v-if="knowledgeBase.api_key">
-              <span class="label">API密钥:</span>
-              <span class="value">{{ maskApiKey(knowledgeBase.api_key) }}</span>
-            </div>
-          </template>
         </div>
       </div>
 
@@ -266,13 +246,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import { IconClose, IconUpload, IconExclamationCircle, IconRefresh } from '@arco-design/web-vue/es/icon';
 import { useProjectStore } from '@/store/projectStore';
 import { KnowledgeService } from '../services/knowledgeService';
 import type { KnowledgeBase, Document, QueryResponse } from '../types/knowledge';
-import { SERVICES_REQUIRING_API_CONFIG } from '../types/knowledge';
 import DocumentUploadModal from './DocumentUploadModal.vue';
 import DocumentDetailModal from './DocumentDetailModal.vue';
 
@@ -474,28 +453,6 @@ const getProjectName = (projectId: number | string) => {
   const numericId = typeof projectId === 'string' ? parseInt(projectId, 10) : projectId;
   const project = projectStore.projectOptions.find(p => p.value === numericId);
   return project ? project.label : String(projectId);
-};
-
-// 获取嵌入服务显示名称
-const getEmbeddingServiceDisplayName = (serviceValue: string) => {
-  const serviceNames: Record<string, string> = {
-    'openai': 'OpenAI',
-    'azure_openai': 'Azure OpenAI',
-    'ollama': 'Ollama',
-    'custom': '自定义API'
-  };
-  return serviceNames[serviceValue] || serviceValue;
-};
-
-// 是否有API配置
-const hasApiConfig = computed(() => {
-  return SERVICES_REQUIRING_API_CONFIG.includes(props.knowledgeBase.embedding_service as any);
-});
-
-// 掩码API密钥
-const maskApiKey = (apiKey: string) => {
-  if (!apiKey || apiKey.length <= 8) return apiKey;
-  return apiKey.substring(0, 4) + '****' + apiKey.substring(apiKey.length - 4);
 };
 
 // 生命周期

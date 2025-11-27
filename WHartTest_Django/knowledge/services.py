@@ -40,7 +40,7 @@ from langchain_community.document_loaders import (
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_core.documents import Document as LangChainDocument
-from .models import KnowledgeBase, Document, DocumentChunk, QueryLog
+from .models import KnowledgeBase, Document, DocumentChunk, QueryLog, KnowledgeGlobalConfig
 import logging
 import requests
 from typing import List
@@ -243,33 +243,53 @@ class VectorStoreManager:
     # 类级别的向量存储缓存
     _vector_store_cache = {}
     _embeddings_cache = {}
+    _global_config_cache = None
+    _global_config_cache_time = 0
 
     def __init__(self, knowledge_base: KnowledgeBase):
         self.knowledge_base = knowledge_base
-        self.embeddings = self._get_embeddings_instance(knowledge_base)
+        self.global_config = self._get_global_config()
+        self.embeddings = self._get_embeddings_instance()
         self._log_embedding_info()
 
-    def _get_embeddings_instance(self, knowledge_base):
-        """获取嵌入模型实例，支持多种服务类型"""
-        cache_key = f"{knowledge_base.embedding_service}_{knowledge_base.id}"
+    @classmethod
+    def _get_global_config(cls):
+        """获取全局配置（带缓存，5分钟过期）"""
+        import time
+        current_time = time.time()
+        
+        # 缓存5分钟
+        if cls._global_config_cache and (current_time - cls._global_config_cache_time) < 300:
+            return cls._global_config_cache
+        
+        cls._global_config_cache = KnowledgeGlobalConfig.get_config()
+        cls._global_config_cache_time = current_time
+        return cls._global_config_cache
+
+    @classmethod
+    def clear_global_config_cache(cls):
+        """清理全局配置缓存"""
+        cls._global_config_cache = None
+        cls._global_config_cache_time = 0
+
+    def _get_embeddings_instance(self):
+        """获取嵌入模型实例，使用全局配置"""
+        config = self.global_config
+        cache_key = f"{config.embedding_service}_{config.api_base_url}_{config.model_name}"
+        
         if cache_key not in self._embeddings_cache:
-            embedding_service = knowledge_base.embedding_service
+            embedding_service = config.embedding_service
             
             try:
                 if embedding_service == 'openai':
-                    # OpenAI Embeddings
-                    self._embeddings_cache[cache_key] = self._create_openai_embeddings(knowledge_base)
+                    self._embeddings_cache[cache_key] = self._create_openai_embeddings(config)
                 elif embedding_service == 'azure_openai':
-                    # Azure OpenAI Embeddings
-                    self._embeddings_cache[cache_key] = self._create_azure_embeddings(knowledge_base)
+                    self._embeddings_cache[cache_key] = self._create_azure_embeddings(config)
                 elif embedding_service == 'ollama':
-                    # Ollama Embeddings
-                    self._embeddings_cache[cache_key] = self._create_ollama_embeddings(knowledge_base)
+                    self._embeddings_cache[cache_key] = self._create_ollama_embeddings(config)
                 elif embedding_service == 'custom':
-                    # 自定义HTTP API
-                    self._embeddings_cache[cache_key] = self._create_custom_api_embeddings(knowledge_base)
+                    self._embeddings_cache[cache_key] = self._create_custom_api_embeddings(config)
                 else:
-                    # 不支持的嵌入服务
                     raise ValueError(f"不支持的嵌入服务: {embedding_service}")
                     
                 # 测试嵌入功能
@@ -282,7 +302,7 @@ class VectorStoreManager:
                 
         return self._embeddings_cache[cache_key]
     
-    def _create_openai_embeddings(self, knowledge_base):
+    def _create_openai_embeddings(self, config):
         """创建OpenAI Embeddings实例"""
         try:
             from langchain_openai import OpenAIEmbeddings
@@ -290,41 +310,40 @@ class VectorStoreManager:
             raise ImportError("需要安装langchain-openai: pip install langchain-openai")
         
         kwargs = {
-            'model': knowledge_base.model_name or 'text-embedding-ada-002',
+            'model': config.model_name or 'text-embedding-ada-002',
         }
         
-        if knowledge_base.api_key:
-            kwargs['api_key'] = knowledge_base.api_key
-        if knowledge_base.api_base_url:
-            kwargs['base_url'] = knowledge_base.api_base_url
+        if config.api_key:
+            kwargs['api_key'] = config.api_key
+        if config.api_base_url:
+            kwargs['base_url'] = config.api_base_url
             
         logger.info(f"🚀 初始化OpenAI嵌入模型: {kwargs['model']}")
         return OpenAIEmbeddings(**kwargs)
     
-    def _create_azure_embeddings(self, knowledge_base):
+    def _create_azure_embeddings(self, config):
         """创建Azure OpenAI Embeddings实例"""
         try:
             from langchain_openai import AzureOpenAIEmbeddings
         except ImportError:
             raise ImportError("需要安装langchain-openai: pip install langchain-openai")
         
-        if not all([knowledge_base.api_key, knowledge_base.api_base_url]):
+        if not all([config.api_key, config.api_base_url]):
             raise ValueError("Azure OpenAI需要配置api_key和api_base_url")
         
         kwargs = {
-            'model': knowledge_base.model_name or 'text-embedding-ada-002',
-            'api_key': knowledge_base.api_key,
-            'azure_endpoint': knowledge_base.api_base_url,
-            'api_version': '2024-02-15-preview',  # 默认版本
+            'model': config.model_name or 'text-embedding-ada-002',
+            'api_key': config.api_key,
+            'azure_endpoint': config.api_base_url,
+            'api_version': '2024-02-15-preview',
         }
         
-        # 部署名默认使用模型名
-        kwargs['deployment'] = knowledge_base.model_name or 'text-embedding-ada-002'
+        kwargs['deployment'] = config.model_name or 'text-embedding-ada-002'
             
         logger.info(f"🚀 初始化Azure OpenAI嵌入模型: {kwargs['model']}")
         return AzureOpenAIEmbeddings(**kwargs)
     
-    def _create_ollama_embeddings(self, knowledge_base):
+    def _create_ollama_embeddings(self, config):
         """创建Ollama Embeddings实例"""
         try:
             from langchain_ollama import OllamaEmbeddings
@@ -332,38 +351,38 @@ class VectorStoreManager:
             raise ImportError("需要安装langchain-ollama: pip install langchain-ollama")
         
         kwargs = {
-            'model': knowledge_base.model_name or 'nomic-embed-text',
+            'model': config.model_name or 'nomic-embed-text',
         }
         
-        if knowledge_base.api_base_url:
-            kwargs['base_url'] = knowledge_base.api_base_url
+        if config.api_base_url:
+            kwargs['base_url'] = config.api_base_url
         else:
-            kwargs['base_url'] = 'http://localhost:11434'  # Ollama默认地址
+            kwargs['base_url'] = 'http://localhost:11434'
             
         logger.info(f"🚀 初始化Ollama嵌入模型: {kwargs['model']}")
         return OllamaEmbeddings(**kwargs)
     
-    def _create_custom_api_embeddings(self, knowledge_base):
+    def _create_custom_api_embeddings(self, config):
         """创建自定义API Embeddings实例"""
-        if not knowledge_base.api_base_url:
+        if not config.api_base_url:
             raise ValueError("自定义API需要配置api_base_url")
         
-        logger.info(f"🚀 初始化自定义API嵌入模型: {knowledge_base.api_base_url}")
+        logger.info(f"🚀 初始化自定义API嵌入模型: {config.api_base_url}")
         return CustomAPIEmbeddings(
-            api_base_url=knowledge_base.api_base_url,
-            api_key=knowledge_base.api_key,
-            custom_headers={},  # 不再使用数据库中的custom_headers字段
-            model_name=knowledge_base.model_name
+            api_base_url=config.api_base_url,
+            api_key=config.api_key,
+            custom_headers={},
+            model_name=config.model_name
         )
     
     def _log_embedding_info(self):
         """记录嵌入模型信息"""
         embedding_type = type(self.embeddings).__name__
+        config = self.global_config
         logger.info(f"   🌟 知识库: {self.knowledge_base.name}")
-        logger.info(f"   🎯 配置的嵌入模型: {self.knowledge_base.model_name}")
+        logger.info(f"   🎯 配置的嵌入模型: {config.model_name}")
         logger.info(f"   ✅ 实际使用的嵌入模型: {embedding_type}")
 
-        # 模型说明
         if embedding_type == "OpenAIEmbeddings":
             logger.info(f"   🎉 说明: 使用OpenAI嵌入API服务")
         elif embedding_type == "AzureOpenAIEmbeddings":
@@ -374,10 +393,9 @@ class VectorStoreManager:
             logger.info(f"   🎉 说明: 使用自定义HTTP API嵌入服务")
 
         self._vector_store = None
-        embedding_type = type(self.embeddings).__name__
         logger.info(f"🤖 向量存储管理器初始化完成:")
         logger.info(f"   📋 知识库: {self.knowledge_base.name} (ID: {self.knowledge_base.id})")
-        logger.info(f"   🎯 配置的嵌入模型: {self.knowledge_base.model_name}")
+        logger.info(f"   🎯 配置的嵌入模型: {config.model_name}")
         logger.info(f"   ✅ 实际使用的嵌入模型: {embedding_type}")
         logger.info(f"   💾 向量存储类型: ChromaDB")
 

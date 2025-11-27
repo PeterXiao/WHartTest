@@ -16,6 +16,7 @@ import type {
   PaginatedResponse,
   SystemStatusResponse,
   EmbeddingServicesResponse,
+  KnowledgeGlobalConfig,
 } from '../types/knowledge';
 
 const API_BASE_URL = '/knowledge';
@@ -24,6 +25,41 @@ const API_BASE_URL = '/knowledge';
  * 知识库管理服务
  */
 export class KnowledgeService {
+  // ==================== 全局配置管理 ====================
+
+  /**
+   * 获取全局配置
+   */
+  static async getGlobalConfig(): Promise<KnowledgeGlobalConfig> {
+    const response = await request<KnowledgeGlobalConfig>({
+      url: `${API_BASE_URL}/global-config/`,
+      method: 'GET'
+    });
+
+    if (response.success) {
+      return response.data!;
+    } else {
+      throw new Error(response.error || 'Failed to get global config');
+    }
+  }
+
+  /**
+   * 更新全局配置
+   */
+  static async updateGlobalConfig(data: Partial<KnowledgeGlobalConfig>): Promise<KnowledgeGlobalConfig> {
+    const response = await request<KnowledgeGlobalConfig>({
+      url: `${API_BASE_URL}/global-config/`,
+      method: 'PUT',
+      data
+    });
+
+    if (response.success) {
+      return response.data!;
+    } else {
+      throw new Error(response.error || 'Failed to update global config');
+    }
+  }
+
   // ==================== 知识库管理 ====================
 
   /**
@@ -393,6 +429,8 @@ export class KnowledgeService {
 
 // 导出便捷方法
 export const {
+  getGlobalConfig,
+  updateGlobalConfig,
   getKnowledgeBases,
   createKnowledgeBase,
   getKnowledgeBase,

@@ -42,21 +42,33 @@ export const getRequiredFieldsForEmbeddingService = (embedding_service: string):
 };
 
 /**
- * 知识库对象
+ * 知识库全局配置
+ */
+export interface KnowledgeGlobalConfig {
+  embedding_service: EmbeddingServiceType;
+  embedding_service_display?: string;
+  api_base_url?: string;
+  api_key?: string;
+  model_name: string;
+  chunk_size: number;
+  chunk_overlap: number;
+  updated_at?: string;
+  updated_by?: number;
+  updated_by_name?: string;
+}
+
+/**
+ * 知识库对象（简化版，嵌入配置统一使用全局配置）
  */
 export interface KnowledgeBase {
   id: string;
   name: string;
   description?: string;
-  project: number | string;  // 允许字符串或数字
+  project: number | string;
   project_name?: string;
   creator: number;
   creator_name?: string;
   is_active: boolean;
-  embedding_service: EmbeddingServiceType;
-  api_base_url: string;
-  api_key?: string;
-  model_name: string;
   chunk_size: number;
   chunk_overlap: number;
   document_count: number;
@@ -66,19 +78,15 @@ export interface KnowledgeBase {
 }
 
 /**
- * 创建知识库的请求体
+ * 创建知识库的请求体（简化版）
  */
 export interface CreateKnowledgeBaseRequest {
-  name: string;                    // 必填，字符串，最大200字符
-  description?: string;            // 可选，字符串，文本类型
-  project: number;                 // 必填，整数，项目ID
-  embedding_service: EmbeddingServiceType; // 必填，嵌入服务选择
-  api_base_url: string;            // 必填，API基础URL
-  api_key?: string;                // 可选，API密钥（OpenAI/Azure必填，Ollama可选）
-  model_name: string;              // 必填，模型名称
-  chunk_size?: number;             // 可选，分块大小，默认1000
-  chunk_overlap?: number;          // 可选，分块重叠，默认200
-  is_active?: boolean;             // 可选，是否启用，默认true
+  name: string;
+  description?: string;
+  project: number;
+  chunk_size?: number;
+  chunk_overlap?: number;
+  is_active?: boolean;
 }
 
 /**

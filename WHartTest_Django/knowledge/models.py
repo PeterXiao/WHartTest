@@ -6,9 +6,80 @@ import uuid
 import os
 
 
+class KnowledgeGlobalConfig(models.Model):
+    """
+    知识库全局配置模型，存储嵌入服务的默认配置
+    采用单例模式，系统中只有一条配置记录
+    """
+    EMBEDDING_SERVICE_CHOICES = [
+        ('openai', 'OpenAI'),
+        ('azure_openai', 'Azure OpenAI'),
+        ('ollama', 'Ollama'),
+        ('custom', '自定义API'),
+    ]
+    
+    embedding_service = models.CharField(
+        _('嵌入服务'),
+        max_length=50,
+        choices=EMBEDDING_SERVICE_CHOICES,
+        default='custom',
+        help_text=_('选择嵌入服务提供商')
+    )
+    api_base_url = models.URLField(
+        _('API基础URL'),
+        blank=True,
+        null=True,
+        help_text=_('API服务的基础URL，如：https://api.openai.com/v1')
+    )
+    api_key = models.CharField(
+        _('API密钥'),
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text=_('API服务的密钥')
+    )
+    model_name = models.CharField(
+        _('模型名称'),
+        max_length=100,
+        default='text-embedding-ada-002',
+        help_text=_('具体的嵌入模型名称')
+    )
+    chunk_size = models.PositiveIntegerField(_('默认分块大小'), default=1000)
+    chunk_overlap = models.PositiveIntegerField(_('默认分块重叠'), default=200)
+    
+    updated_at = models.DateTimeField(_('更新时间'), auto_now=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='updated_knowledge_configs',
+        verbose_name=_('更新人')
+    )
+
+    class Meta:
+        verbose_name = _('知识库全局配置')
+        verbose_name_plural = _('知识库全局配置')
+
+    def __str__(self):
+        return f"知识库全局配置 ({self.get_embedding_service_display()})"
+    
+    def save(self, *args, **kwargs):
+        """确保只有一条记录（单例模式）"""
+        self.pk = 1
+        super().save(*args, **kwargs)
+    
+    @classmethod
+    def get_config(cls):
+        """获取全局配置，如果不存在则创建默认配置"""
+        config, _ = cls.objects.get_or_create(pk=1)
+        return config
+
+
 class KnowledgeBase(models.Model):
     """
     知识库模型，支持项目级别的知识库管理
+    嵌入服务配置统一使用 KnowledgeGlobalConfig 全局配置
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(_('知识库名称'), max_length=200)
@@ -29,47 +100,8 @@ class KnowledgeBase(models.Model):
     is_active = models.BooleanField(_('是否启用'), default=True)
     created_at = models.DateTimeField(_('创建时间'), auto_now_add=True)
     updated_at = models.DateTimeField(_('更新时间'), auto_now=True)
-
-    # 向量数据库配置 - 简化版
-    EMBEDDING_SERVICE_CHOICES = [
-        ('openai', 'OpenAI'),
-        ('azure_openai', 'Azure OpenAI'),
-        ('ollama', 'Ollama'),
-        ('custom', '自定义API'),
-    ]
     
-    embedding_service = models.CharField(
-        _('嵌入服务'),
-        max_length=50,
-        choices=EMBEDDING_SERVICE_CHOICES,
-        default='openai',
-        help_text=_('选择嵌入服务提供商')
-    )
-    
-    # 标准的三个配置字段
-    api_base_url = models.URLField(
-        _('API基础URL'),
-        blank=True,
-        null=True,
-        help_text=_('API服务的基础URL，如：https://api.openai.com/v1')
-    )
-    api_key = models.CharField(
-        _('API密钥'),
-        max_length=500,
-        blank=True,
-        null=True,
-        help_text=_('API服务的密钥')
-    )
-    model_name = models.CharField(
-        _('模型名称'),
-        max_length=100,
-        blank=True,
-        null=True,
-        default='text-embedding-ada-002',
-        help_text=_('具体的嵌入模型名称')
-    )
-    
-    # 文档处理配置
+    # 文档处理配置（可覆盖全局默认值）
     chunk_size = models.PositiveIntegerField(_('分块大小'), default=1000)
     chunk_overlap = models.PositiveIntegerField(_('分块重叠'), default=200)
 

@@ -298,10 +298,15 @@ service.interceptors.response.use(
           }
           break;
         case 404:
-          message = '请求的资源不存在';
+          if (!message || message === '未知错误') {
+            message = '请求的资源不存在';
+          }
           break;
         case 500:
-          message = '服务器内部错误';
+          // 优先使用后端返回的具体错误信息
+          if (!message || message === '未知错误') {
+            message = '服务器内部错误';
+          }
           break;
         default:
           // 使用从响应中解析的消息
