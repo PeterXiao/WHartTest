@@ -287,15 +287,37 @@ const maskApiKey = (key: string) => {
   return key.substring(0, 4) + '••••••••' + key.substring(key.length - 4);
 };
 
-// 复制Key到剪贴板
-const copyApiKey = (key: string) => {
-  navigator.clipboard.writeText(key)
-    .then(() => {
+// 复制Key到剪贴板（兼容HTTP环境）
+const copyApiKey = async (key: string) => {
+  try {
+    // 优先使用 Clipboard API（HTTPS或localhost可用）
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(key);
       Message.success('Key已复制到剪贴板');
-    })
-    .catch(() => {
+      return;
+    }
+    
+    // 回退方案：使用 document.execCommand（兼容HTTP）
+    const textArea = document.createElement('textarea');
+    textArea.value = key;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    
+    if (successful) {
+      Message.success('Key已复制到剪贴板');
+    } else {
       Message.error('复制失败，请手动复制');
-    });
+    }
+  } catch {
+    Message.error('复制失败，请手动复制');
+  }
 };
 
 // 搜索

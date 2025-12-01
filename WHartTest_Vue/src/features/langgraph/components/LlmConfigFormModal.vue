@@ -207,16 +207,15 @@ const formRules: Record<string, FieldRule[]> = {
     {
       required: !isEditing.value,
       message: 'API Key 不能为空',
-      validator: (value, cb) => {
+      validator: (value: string | undefined, cb: (error?: string) => void) => {
         if (!isEditing.value && !value) {
           return cb('API Key 不能为空');
         }
         if (value && value.length < 10 && !isEditing.value) {
-            // 仅在创建时或编辑时输入了新值才校验长度
-            return cb('API key 必须至少 10 个字符长。');
+          return cb('API key 必须至少 10 个字符长。');
         }
         if (isEditing.value && value && value.length > 0 && value.length < 10) {
-             return cb('API key 必须至少 10 个字符长。');
+          return cb('API key 必须至少 10 个字符长。');
         }
         return cb();
       }
