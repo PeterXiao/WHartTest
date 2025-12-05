@@ -6,12 +6,11 @@ from django.utils import timezone
 class LLMConfig(models.Model):
     """
     LLM配置模型 - 管理大语言模型的配置信息
+    统一使用OpenAI兼容格式，支持所有兼容的服务商
     """
     
     PROVIDER_CHOICES = [
         ('openai_compatible', 'OpenAI 兼容'),
-        ('anthropic', 'Anthropic/Claude'),
-        ('gemini', 'Google Gemini'),
     ]
     
     # 配置标识字段（新增）

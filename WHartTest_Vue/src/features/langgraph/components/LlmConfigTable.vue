@@ -15,11 +15,6 @@
         </span>
         <span v-else class="text-gray-400">未设置</span>
       </template>
-      <template #provider="{ record }">
-        <a-tag :color="getProviderColor(record.provider)">
-          {{ getProviderLabel(record.provider) }}
-        </a-tag>
-      </template>
       <template #isActive="{ record }">
         <a-switch
           :model-value="record.is_active"
@@ -59,10 +54,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
 import {
   Table as ATable,
-  Tag as ATag,
   Button as AButton,
   Space as ASpace,
   Popconfirm as APopconfirm,
@@ -73,7 +66,6 @@ import {
 import { IconEdit, IconDelete } from '@arco-design/web-vue/es/icon';
 import type { LlmConfig } from '@/features/langgraph/types/llmConfig';
 import { formatDateTime } from '@/utils/formatters';
-import { getProviders, type ProviderOption } from '@/features/langgraph/services/llmConfigService';
 
 interface Props {
   configs: LlmConfig[];
@@ -101,43 +93,9 @@ const emit = defineEmits<{
   (e: 'page-size-change', pageSize: number): void;
 }>();
 
-const providerOptions = ref<ProviderOption[]>([]);
-
-const getProviderLabel = (providerValue: string): string => {
-  const option = providerOptions.value.find(opt => opt.value === providerValue);
-  return option ? option.label : providerValue;
-};
-
-const getProviderColor = (providerValue: string): string => {
-  const colorMap: Record<string, string> = {
-    openai: 'blue',
-    anthropic: 'purple',
-    ollama: 'orange',
-    gemini: 'green',
-    openai_compatible: 'gray'
-  };
-  return colorMap[providerValue] || 'gray';
-};
-
-const loadProviders = async () => {
-  try {
-    const response = await getProviders();
-    if (response.status === 'success' && response.data) {
-      providerOptions.value = response.data.choices;
-    }
-  } catch (error) {
-    console.error('Failed to load providers:', error);
-  }
-};
-
-onMounted(() => {
-  loadProviders();
-});
-
 const columns: TableColumnData[] = [
   { title: 'ID', dataIndex: 'id', width: 80, sortable: { sortDirections: ['ascend', 'descend'] } },
   { title: '配置名称', dataIndex: 'config_name', width: 150, ellipsis: true, tooltip: true },
-  { title: '供应商', dataIndex: 'provider', slotName: 'provider', width: 120, align: 'center' },
   { title: '模型名称', dataIndex: 'name', width: 150, ellipsis: true, tooltip: true },
   { title: 'API URL', dataIndex: 'api_url', width: 200, ellipsis: true, tooltip: true },
   { title: '系统提示词', dataIndex: 'system_prompt', slotName: 'systemPrompt', width: 200, ellipsis: true, tooltip: true },

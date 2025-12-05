@@ -16,27 +16,10 @@
       @submit="handleSubmit"
     >
       <a-row :gutter="24">
-        <!-- 第一行：配置名称 + 供应商 -->
-        <a-col :span="12">
+        <!-- 第一行：配置名称 (全宽) -->
+        <a-col :span="24">
           <a-form-item field="config_name" label="配置名称" required>
             <a-input v-model="formData.config_name" placeholder="例如: GPT-4 生产环境" />
-          </a-form-item>
-        </a-col>
-        <a-col :span="12">
-          <a-form-item field="provider" label="供应商" required>
-            <a-select 
-              v-model="formData.provider" 
-              placeholder="请选择供应商"
-              :loading="loadingProviders"
-            >
-              <a-option 
-                v-for="option in providerOptions" 
-                :key="option.value" 
-                :value="option.value"
-              >
-                {{ option.label }}
-              </a-option>
-            </a-select>
           </a-form-item>
         </a-col>
 
@@ -81,8 +64,9 @@
           </a-form-item>
         </a-col>
 
-        <!-- 测试按钮：右对齐，紧凑 -->
+        <!-- 提示信息 + 测试按钮 -->
         <a-col :span="24" class="test-button-row">
+          <span class="api-hint">仅支持 OpenAI 兼容格式的 API</span>
           <a-button 
             type="outline"
             status="success"
@@ -121,7 +105,7 @@
           </a-form-item>
         </a-col>
         <a-col :span="8">
-          <a-form-item field="supports_vision" label="能力支持">
+          <a-form-item field="supports_vision" label="图片">
             <a-space>
               <a-switch v-model="formData.supports_vision" />
               <span class="switch-desc">Vision</span>
@@ -142,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, nextTick, onMounted } from 'vue';
+import { ref, watch, computed, nextTick } from 'vue';
 import {
   Modal as AModal,
   Form as AForm,
@@ -152,8 +136,6 @@ import {
   InputNumber as AInputNumber,
   Textarea as ATextarea,
   Switch as ASwitch,
-  Select as ASelect,
-  Option as AOption,
   AutoComplete as AAutoComplete,
   Button as AButton,
   Row as ARow,
@@ -167,7 +149,6 @@ import {
 import { IconRefresh, IconThunderbolt } from '@arco-design/web-vue/es/icon';
 import axios from 'axios';
 import type { LlmConfig, CreateLlmConfigRequest, PartialUpdateLlmConfigRequest } from '@/features/langgraph/types/llmConfig';
-import { getProviders, type ProviderOption } from '@/features/langgraph/services/llmConfigService';
 
 interface Props {
   visible: boolean;
@@ -187,14 +168,12 @@ const emit = defineEmits<{
 }>();
 
 const formRef = ref<FormInstance | null>(null);
-const providerOptions = ref<ProviderOption[]>([]);
-const loadingProviders = ref(false);
 const modelOptions = ref<string[]>([]);
 const loadingModels = ref(false);
 const testingModel = ref(false);
 const defaultFormData: CreateLlmConfigRequest = {
   config_name: '',
-  provider: '',
+  provider: 'openai_compatible',
   name: '',
   api_url: '',
   api_key: '',
@@ -209,14 +188,12 @@ const isEditing = computed(() => !!props.configData?.id);
 
 const formRules: Record<string, FieldRule[]> = {
   config_name: [{ required: true, message: '配置名称不能为空' }],
-  provider: [{ required: true, message: '供应商不能为空' }],
   name: [{ required: true, message: '模型名称不能为空' }],
   api_url: [
     { required: true, message: 'API URL 不能为空' },
     { type: 'url', message: '请输入有效的 URL' },
   ],
   api_key: [
-    // API Key 在创建时必填，编辑时可选
     {
       required: !isEditing.value,
       message: 'API Key 不能为空',
@@ -315,21 +292,7 @@ const handleCancel = () => {
   emit('cancel');
 };
 
-const loadProviders = async () => {
-  loadingProviders.value = true;
-  try {
-    const response = await getProviders();
-    if (response.status === 'success' && response.data) {
-      providerOptions.value = response.data.choices;
-    }
-  } catch (error) {
-    console.error('Failed to load providers:', error);
-  } finally {
-    loadingProviders.value = false;
-  }
-};
-
-// 从 API 获取可用模型列表（根据供应商类型）
+// 从 API 获取可用模型列表（OpenAI 兼容格式）
 const fetchAvailableModels = async () => {
   if (!formData.value.api_url) {
     Message.warning('请先填写 API URL');
@@ -341,68 +304,30 @@ const fetchAvailableModels = async () => {
     return;
   }
 
-  const provider = formData.value.provider;
   loadingModels.value = true;
   
   try {
     const apiUrl = formData.value.api_url.replace(/\/$/, '');
-    
-    if (provider === 'anthropic') {
-      // Anthropic 没有标准的模型列表API，提供常用模型列表
-      modelOptions.value = [
-        'claude-3-5-sonnet-20241022',
-        'claude-3-5-haiku-20241022',
-        'claude-3-opus-20240229',
-        'claude-3-sonnet-20240229',
-        'claude-3-haiku-20240307',
-        'claude-2.1',
-        'claude-2.0',
-      ];
-      Message.success(`已加载 ${modelOptions.value.length} 个 Anthropic 常用模型`);
-    } else if (provider === 'gemini') {
-      // Gemini API 获取模型列表
-      const modelsEndpoint = `${apiUrl}/models?key=${formData.value.api_key}`;
-      const response = await axios.get(modelsEndpoint, {
-        timeout: 10000,
-      });
-      
-      if (response.data && response.data.models) {
-        const models = response.data.models
-          .filter((model: any) => model.supportedGenerationMethods?.includes('generateContent'))
-          .map((model: any) => model.name.replace('models/', ''));
-        modelOptions.value = models;
-        if (models.length > 0) {
-          Message.success(`成功获取 ${models.length} 个 Gemini 模型`);
-        } else {
-          Message.warning('未找到可用的 Gemini 模型');
-        }
+    const modelsEndpoint = `${apiUrl}/models`;
+    const response = await axios.get(modelsEndpoint, {
+      headers: {
+        'Authorization': `Bearer ${formData.value.api_key}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
+
+    if (response.data && response.data.data) {
+      const models = response.data.data.map((model: any) => model.id);
+      modelOptions.value = models;
+      if (models.length > 0) {
+        Message.success(`成功获取 ${models.length} 个模型`);
       } else {
-        Message.warning('Gemini API 返回格式不符合预期');
-        modelOptions.value = [];
+        Message.warning('未找到可用模型');
       }
     } else {
-      // OpenAI 兼容格式（包括 openai_compatible）
-      const modelsEndpoint = `${apiUrl}/models`;
-      const response = await axios.get(modelsEndpoint, {
-        headers: {
-          'Authorization': `Bearer ${formData.value.api_key}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000,
-      });
-
-      if (response.data && response.data.data) {
-        const models = response.data.data.map((model: any) => model.id);
-        modelOptions.value = models;
-        if (models.length > 0) {
-          Message.success(`成功获取 ${models.length} 个模型`);
-        } else {
-          Message.warning('未找到可用模型');
-        }
-      } else {
-        Message.warning('API 返回格式不符合预期');
-        modelOptions.value = [];
-      }
+      Message.warning('API 返回格式不符合预期');
+      modelOptions.value = [];
     }
   } catch (error: any) {
     console.error('获取模型列表失败:', error);
@@ -417,9 +342,8 @@ const fetchAvailableModels = async () => {
   }
 };
 
-// 测试 LLM 模型真实可用性（根据供应商类型）
+// 测试 LLM 模型真实可用性（OpenAI 兼容格式）
 const testLlmModel = async () => {
-  // 验证必要字段
   if (!formData.value.api_url) {
     Message.warning('请先填写 API URL');
     return;
@@ -433,91 +357,34 @@ const testLlmModel = async () => {
     return;
   }
 
-  const provider = formData.value.provider;
   testingModel.value = true;
   
   try {
     const apiUrl = formData.value.api_url.replace(/\/$/, '');
-    
-    if (provider === 'anthropic') {
-      // Anthropic API 格式
-      const chatEndpoint = `${apiUrl}/messages`;
-      const response = await axios.post(chatEndpoint, {
-        model: formData.value.name,
-        messages: [
-          { role: 'user', content: 'Hi, this is a test message.' }
-        ],
-        max_tokens: 10
-      }, {
-        headers: {
-          'x-api-key': formData.value.api_key,
-          'anthropic-version': '2023-06-01',
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000,
-      });
+    const chatEndpoint = `${apiUrl}/chat/completions`;
+    const response = await axios.post(chatEndpoint, {
+      model: formData.value.name,
+      messages: [
+        { role: 'user', content: 'Hi, this is a test message.' }
+      ],
+      max_tokens: 10
+    }, {
+      headers: {
+        'Authorization': `Bearer ${formData.value.api_key}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
+    });
 
-      if (response.data && response.data.content && response.data.content.length > 0) {
-        Message.success('Anthropic 模型测试成功！服务运行正常');
+    if (response.data && response.data.choices && response.data.choices.length > 0) {
+      const content = response.data.choices[0].message?.content;
+      if (content !== undefined) {
+        Message.success('模型测试成功！服务运行正常');
       } else {
-        Message.warning('模型响应成功但未返回有效数据');
-      }
-    } else if (provider === 'gemini') {
-      // Gemini API 格式
-      const modelName = formData.value.name.startsWith('models/') 
-        ? formData.value.name 
-        : `models/${formData.value.name}`;
-      const chatEndpoint = `${apiUrl}/${modelName}:generateContent?key=${formData.value.api_key}`;
-      
-      const response = await axios.post(chatEndpoint, {
-        contents: [
-          { 
-            role: 'user',
-            parts: [{ text: 'Hi, this is a test message.' }]
-          }
-        ],
-        generationConfig: {
-          maxOutputTokens: 10
-        }
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000,
-      });
-
-      if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-        Message.success('Gemini 模型测试成功！服务运行正常');
-      } else {
-        Message.warning('模型响应成功但未返回有效数据');
+        Message.warning('模型响应成功但数据格式异常');
       }
     } else {
-      // OpenAI 兼容格式（包括 openai_compatible）
-      const chatEndpoint = `${apiUrl}/chat/completions`;
-      const response = await axios.post(chatEndpoint, {
-        model: formData.value.name,
-        messages: [
-          { role: 'user', content: 'Hi, this is a test message.' }
-        ],
-        max_tokens: 10
-      }, {
-        headers: {
-          'Authorization': `Bearer ${formData.value.api_key}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000,
-      });
-
-      if (response.data && response.data.choices && response.data.choices.length > 0) {
-        const content = response.data.choices[0].message?.content;
-        if (content !== undefined) {
-          Message.success('模型测试成功！服务运行正常');
-        } else {
-          Message.warning('模型响应成功但数据格式异常');
-        }
-      } else {
-        Message.warning('模型响应成功但未返回有效数据');
-      }
+      Message.warning('模型响应成功但未返回有效数据');
     }
   } catch (error: any) {
     console.error('模型测试失败:', error);
@@ -534,15 +401,10 @@ const testLlmModel = async () => {
 
 // 处理模型输入框聚焦
 const handleModelInputFocus = () => {
-  // 如果有 API URL 和 API Key,且模型列表为空,自动获取
   if (formData.value.api_url && formData.value.api_key && modelOptions.value.length === 0) {
     fetchAvailableModels();
   }
 };
-
-onMounted(() => {
-  loadProviders();
-});
 </script>
 
 <style scoped>
@@ -559,9 +421,15 @@ onMounted(() => {
 
 .test-button-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
   margin-top: -8px;
+}
+
+.api-hint {
+  font-size: 12px;
+  color: var(--color-text-3);
 }
 
 .switch-desc {
