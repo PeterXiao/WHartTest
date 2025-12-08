@@ -27,18 +27,23 @@ RUN pip install --no-cache-dir uv
 # 复制requirements并安装依赖到虚拟环境
 COPY requirements.txt .
 
-# 使用uv直接安装到虚拟环境（uv更快）
+# 使用uv直接安装到虚拟环境（uv更快）+ 使用清华镜像加速
 RUN uv venv /opt/venv && \
-    uv pip install --python /opt/venv/bin/python --no-cache -r requirements.txt
+    uv pip install --python /opt/venv/bin/python --no-cache \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
 
 # 预下载 BM25 稀疏编码模型（用于混合检索）
 # 使用 FASTEMBED_CACHE_PATH 环境变量强制指定缓存路径
+# 使用 Hugging Face 国内镜像加速下载
 ENV HOME=/root \
-    FASTEMBED_CACHE_PATH=/root/.cache/fastembed
+    FASTEMBED_CACHE_PATH=/root/.cache/fastembed \
+    HF_ENDPOINT=https://hf-mirror.com
 RUN mkdir -p /root/.cache/fastembed && \
     /opt/venv/bin/python -c "\
 import os; \
 os.environ['FASTEMBED_CACHE_PATH'] = '/root/.cache/fastembed'; \
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'; \
 from fastembed import SparseTextEmbedding; \
 m = SparseTextEmbedding('Qdrant/bm25'); \
 print('BM25 model downloaded to:', os.environ.get('FASTEMBED_CACHE_PATH')); \

@@ -21,8 +21,10 @@ RUN pip install uv
 # 复制依赖文件
 COPY requirements.txt .
 
-# 使用 uv 安装 Python 依赖
-RUN uv pip install --system -r requirements.txt
+# 使用 uv 安装 Python 依赖 + 使用清华镜像加速
+RUN uv pip install --system \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r requirements.txt
 
 # 复制supervisord配置
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

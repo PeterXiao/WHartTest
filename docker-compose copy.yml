@@ -17,7 +17,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-wharttest}
     ports:
-      - "8919:5432"
+      - "0.0.0.0:8919:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -39,7 +39,7 @@ services:
     image: docker.m.daocloud.io/library/redis:7-alpine
     container_name: wharttest-redis
     ports:
-      - "8911:6379"
+      - "0.0.0.0:8911:6379"
     volumes:
       - redis-data:/data
     networks:
@@ -61,7 +61,7 @@ services:
     container_name: wharttest-backend
     # 启动逻辑已移至 Dockerfile 的 ENTRYPOINT 和 supervisord.conf
     ports:
-      - "8912:8000"
+      - "0.0.0.0:8912:8000"
     volumes:
       - ./data:/app/data
       - backend-static:/app/static
@@ -83,7 +83,7 @@ services:
       - DJANGO_DEBUG=True
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-change-this-in-production}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-*}
-      - DJANGO_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:80
+      - DJANGO_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:80,http://*:8913
       - DJANGO_ADMIN_USERNAME=${DJANGO_ADMIN_USERNAME:-admin}
       - DJANGO_ADMIN_EMAIL=${DJANGO_ADMIN_EMAIL:-admin@example.com}
       - DJANGO_ADMIN_PASSWORD=${DJANGO_ADMIN_PASSWORD:-admin123456}
@@ -119,7 +119,7 @@ services:
       dockerfile: Dockerfile
     container_name: wharttest-frontend
     ports:
-      - "8913:80"
+      - "0.0.0.0:8913:80"
     depends_on:
       - backend
     networks:
@@ -150,8 +150,8 @@ services:
       - MS_ACCESS_KEY=${MS_ACCESS_KEY:-your_16byte_key1}
       - MS_SECRET_KEY=${MS_SECRET_KEY:-your_16byte_key2}
     ports:
-      - "8914:8006" # WHartTest_tools 服务端口
-      - "8915:8007" # ms_mcp_api 服务端口
+      - "0.0.0.0:8914:8006" # WHartTest_tools 服务端口
+      - "0.0.0.0:8915:8007" # ms_mcp_api 服务端口
     volumes:
       - ./data/playwright-screenshots:/tmp/playwright-output # 使用本地目录挂载
     depends_on:
@@ -174,7 +174,7 @@ services:
     entrypoint: node
     command: [ "cli.js", "--no-sandbox", "--host", "0.0.0.0", "--allowed-hosts", "*", "--config", "/app/playwright-mcp-config.json" ]
     ports:
-      - "8916:8931"
+      - "0.0.0.0:8916:8931"
     volumes:
       - ./data/playwright-screenshots:/tmp/playwright-output # 使用本地目录挂载
       - ./WHartTest_MCP/playwright-mcp-config.json:/app/playwright-mcp-config.json:ro # 挂载配置文件
@@ -192,8 +192,11 @@ services:
   bge-m3:
     image: ollama/ollama:latest
     container_name: wharttest-bge-m3
+    environment:
+      # 使用 Hugging Face 国内镜像加速模型下载（Ollama会从HF下载模型）
+      - HF_ENDPOINT=https://hf-mirror.com
     ports:
-      - "8917:11434"
+      - "0.0.0.0:8917:11434"
     volumes:
       - bge-m3-data:/root/.ollama
     networks:
@@ -217,7 +220,7 @@ services:
     image: docker.m.daocloud.io/qdrant/qdrant:latest
     container_name: wharttest-qdrant
     ports:
-      - "8918:6333"  # REST API
+      - "0.0.0.0:8918:6333"  # REST API
     volumes:
       - qdrant-data:/qdrant/storage
     networks:
