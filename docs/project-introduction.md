@@ -22,12 +22,21 @@
 - 前端：Vue + Vite（详见 `WHartTest_Vue`）
 
 ## 快速上手（简要）
-1. 克隆仓库并进入项目根目录。
-2. 进入 `WHartTest_Django`，创建虚拟环境并安装依赖：参见 `requirements.txt`。
-3. 执行数据库迁移并启动服务：
-   - python manage.py migrate
-   - python manage.py runserver
-4. 浏览器打开 http://127.0.0.1:8000 查看界面（具体配置与部署请参阅根目录 README）。
+1. 克隆仓库并进入项目根目录：
+   ```bash
+   git clone https://github.com/MGdaasLab/WHartTest.git
+   cd WHartTest
+   ```
+2. 使用 Docker Compose 启动所有服务：
+   ```bash
+   docker-compose up -d
+   ```
+3. 等待服务启动完成后，访问以下地址：
+   - 前端界面：http://localhost:8913
+   - 默认管理员账号：admin / admin123456
+4. 如需自定义配置（如数据库密码、管理员账号等），请在项目根目录创建 `.env` 文件进行设置。
+
+> 详细配置与部署说明请参阅根目录 README。
 
 ## 界面与功能预览
 以下截图展示了平台的典型界面与功能，供快速浏览：
