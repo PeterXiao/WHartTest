@@ -1,5 +1,6 @@
 # 配置流程
 
+> **提示**：本文档为手动配置流程。Docker 部署会自动初始化默认配置；源码部署可执行 `python manage.py init_admin` 完成初始化。
 
 ## 一、创建项目
 首先让我们先创建一个项目
@@ -67,6 +68,7 @@ docker-compose up -d bge-m3-init
 3.替换key
 
 <img src="./img_11.png" alt="contact" width="1000">
+4.需要重启相关服务
 
 ### 配置MCP
 1.本地部署运行下方命令启动mcp服务

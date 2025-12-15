@@ -44,8 +44,8 @@ source $HOME/.cargo/env
 
 #### 2. 克隆项目
 ```bash
-git clone <your-repo-url>
-cd WHartTest_Django
+git clone https://github.com/MGdaasLab/WHartTest.git
+cd WHartTest/WHartTest_Django
 ```
 
 #### 3. 创建并激活虚拟环境
@@ -61,7 +61,7 @@ source .venv/bin/activate
 #### 4. 安装依赖
 使用 `uv` 高效地安装项目依赖。
 ```bash
-uv pip sync -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 #### 5. 数据库迁移和系统初始化
@@ -76,8 +76,8 @@ python manage.py init_admin
 
 #### 6. 启动服务
 ```bash
-# 使用 Gunicorn 启动 Django 应用
-gunicorn wharttest_django.wsgi:application --bind 0.0.0.0:8000 --workers 4
+# 使用 Uvicorn 启动 Django 应用（支持 WebSocket）
+uvicorn wharttest_django.asgi:application --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 #### 6. 收集静态文件
@@ -86,19 +86,19 @@ gunicorn wharttest_django.wsgi:application --bind 0.0.0.0:8000 --workers 4
 python manage.py collectstatic --noinput
 ```
 
-#### 7. 使用 Gunicorn 启动服务
+#### 7. 使用 Uvicorn 启动服务
 ```bash
-# 安装 gunicorn
-pip install gunicorn
+# 安装 uvicorn
+pip install uvicorn
 
-# 启动服务
-gunicorn wharttest_django.wsgi:application \
-  --bind 0.0.0.0:8000 \
+# 启动服务（支持 WebSocket）
+uvicorn wharttest_django.asgi:application \
+  --host 0.0.0.0 \
+  --port 8000 \
   --workers 4 \
-  --timeout 120 \
-  --preload
+  --timeout-keep-alive 120
 ```
-*   `--preload` 会在启动时预加载模型，减少首次请求的延迟。
+*   项目使用 Django Channels 实现 WebSocket，必须使用 ASGI 服务器。
 
 
 ## 🔍 部署验证

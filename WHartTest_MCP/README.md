@@ -5,7 +5,7 @@
 本项目包含两个 MCP (Model Context Protocol) 工具服务：
 
 - **ms_mcp_api.py** - MS测试用例工具，提供与MS测试平台的API交互功能
-- **testauto_tools.py** - 测试用例工具，提供本地测试用例管理功能
+- **WHartTest_tools.py** - WHartTest 测试用例工具，提供本地测试用例管理功能
 
 ## 环境要求
 

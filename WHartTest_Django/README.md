@@ -413,8 +413,8 @@ python manage.py createsuperuser
 # 7. 收集静态文件
 python manage.py collectstatic --noinput
 
-# 8. 启动生产服务器
-gunicorn wharttest_django.wsgi:application --bind 0.0.0.0:8000 --workers 4
+# 8. 启动生产服务器（支持 WebSocket）
+uvicorn wharttest_django.asgi:application --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ##### 方案2: Docker Compose部署（推荐）

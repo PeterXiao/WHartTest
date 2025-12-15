@@ -97,7 +97,7 @@
             </a-menu-item>
             <a-menu-item key="automation-scripts" v-if="hasAutomationScriptsPermission">
               <template #icon><icon-robot /></template>
-              <a href="#" @click="checkProjectAndNavigate($event, '/automation-scripts')">UI用例</a>
+              <a href="#" @click="checkProjectAndNavigate($event, '/automation-scripts')">UI脚本库</a>
             </a-menu-item>
             <a-menu-item key="testsuites" v-if="hasTestSuitesPermission">
               <template #icon><icon-folder /></template>

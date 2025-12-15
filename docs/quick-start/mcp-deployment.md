@@ -5,24 +5,32 @@
 本项目包含两个 MCP (Model Context Protocol) 工具服务：
 
 - **ms_mcp_api.py** - MS测试用例工具，提供与MS测试平台的API交互功能
-- **testauto_tools.py** - 测试用例工具，提供本地测试用例管理功能
+- **WHartTest_tools.py** - WHartTest 测试用例工具，提供本地测试用例管理功能
 
 
 ## 注意！！！
 
-- 测试用例工具里面的key，需要部署完前后端之后去系统管理里面获取
-
-## 环境要求
-
-- Python 3.8+
-- 网络连接（用于API调用）
+- **Docker 部署**：API Key 会在容器启动时自动初始化，默认 Key 为 `wharttest-default-mcp-key-2025`
+- **源码部署**：需要在数据库迁移完成后，手动执行 `python manage.py init_admin` 初始化，默认 Key 同上
 
 ## 安装部署
 
-### 1. 安装依赖
+### 1. 创建虚拟环境并安装依赖
 
 ```bash
-pip install -r requirements.txt
+cd WHartTest_MCP
+
+# 创建虚拟环境
+uv venv --python 3.11
+
+# 激活虚拟环境
+# Linux/macOS
+source .venv/bin/activate
+# Windows
+# .venv\Scripts\activate
+
+# 安装依赖
+uv pip install -r requirements.txt
 ```
 
 ### 2. 配置说明
@@ -31,9 +39,9 @@ pip install -r requirements.txt
 
 - **服务端口**: 8007
 - **API地址**: http://msxxxxxxxxx.com
-- **认证信息**: 已内置在代码中
+- **认证信息**: 需要在 `.env` 文件中配置 `MS_ACCESS_KEY` 和 `MS_SECRET_KEY`
 
-#### 测试用例工具 (testauto_tools.py)
+#### WHartTest 测试用例工具 (WHartTest_tools.py)
 
 - **服务端口**: 8006
 - **API地址**: 后端服务ip+端口
@@ -44,7 +52,7 @@ pip install -r requirements.txt
 #### 启动MS测试用例工具
 
 ```bash
-python ms_mcp_api.py
+uv run python ms_mcp_api.py
 ```
 
 服务将在 `http://127.0.0.1:8007` 启动
@@ -52,7 +60,7 @@ python ms_mcp_api.py
 #### 启动测试用例工具
 
 ```bash
-python testauto_tools.py
+uv run python WHartTest_tools.py
 ```
 
 服务将在 `http://0.0.0.0:8006` 启动
@@ -78,7 +86,7 @@ python testauto_tools.py
 
 ## MCP 集成
 
-这些工具基于 FastMCP 框架构建，可以与支持 MCP 协议的客户端集成使用。
+这些工具基于 FastMCP 框架构建，可以与支持 MCP 协议的【其他客户端】集成使用。
 
 ### 连接配置
 
@@ -94,7 +102,7 @@ python testauto_tools.py
     },
     "testauto-tools": {
       "command": "python",
-      "args": ["path/to/testauto_tools.py"],
+      "args": ["path/to/WHartTest_tools.py"],
       "env": {}
     }
   }
