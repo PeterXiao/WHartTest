@@ -19,7 +19,7 @@
           </a-radio>
           <a-radio value="h2">
             <div class="radio-content">
-              <strong>H2级别拆分 ⭐推荐</strong>
+              <strong>H2级别拆分</strong>
               <div class="radio-desc">按二级标题（## 标题）拆分 - 适合功能模块拆分</div>
             </div>
           </a-radio>

@@ -98,6 +98,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # 中文字体支持（解决截图乱码问题）
     fonts-noto-cjk \
     fonts-wqy-zenhei \
+    # 旧版Word文档(.doc)解析支持
+    antiword \
+    catdoc \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && fc-cache -fv

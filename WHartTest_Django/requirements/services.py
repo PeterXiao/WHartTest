@@ -416,6 +416,19 @@ class DocumentProcessor:
         import subprocess
 
         file.seek(0)
+        # 检测文件真实格式（通过魔数）
+        header = file.read(8)
+        file.seek(0)
+        logger.debug(f"文件头部魔数: {header[:4] if isinstance(header, bytes) else header[:4].encode()}")
+
+        # ZIP魔数 (PK..) = docx/xlsx/pptx 等 Office Open XML 格式
+        if isinstance(header, bytes) and header[:4] == b'PK\x03\x04':
+            logger.info("检测到文件实际为 .docx 格式（ZIP魔数），回退到 docx 解析器")
+            return self._extract_from_word(file)
+        elif isinstance(header, str) and header[:4] == 'PK\x03\x04':
+            logger.info("检测到文件实际为 .docx 格式（ZIP魔数-str），回退到 docx 解析器")
+            return self._extract_from_word(file)
+
         with tempfile.NamedTemporaryFile(delete=False, suffix='.doc') as tmp:
             tmp.write(file.read())
             tmp_path = os.path.abspath(tmp.name)
@@ -441,6 +454,8 @@ class DocumentProcessor:
                     content = result.stdout.strip()
                     logger.info(f"成功提取.doc文档(antiword)，内容长度: {len(content)}")
                     return content
+                else:
+                    logger.debug(f"antiword 返回码: {result.returncode}, stderr: {result.stderr}")
             except FileNotFoundError:
                 logger.debug("antiword 未安装")
             except Exception as e:
