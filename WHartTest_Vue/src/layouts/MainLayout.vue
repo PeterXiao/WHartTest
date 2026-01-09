@@ -68,7 +68,10 @@
           class="menu"
         >
 
-          <!-- 仪表盘菜单已隐藏 -->
+          <a-menu-item key="dashboard">
+            <template #icon><icon-home /></template>
+            <router-link to="/dashboard">首页</router-link>
+          </a-menu-item>
 
           <a-menu-item key="projects" v-if="hasProjectsPermission">
             <template #icon><icon-storage /></template>
@@ -218,6 +221,7 @@ import {
   IconHistory,
   IconExperiment,
   IconRobot,
+  IconHome,
 } from '@arco-design/web-vue/es/icon';
 import '@arco-design/web-vue/dist/arco.css'; // 引入 Arco Design 样式
 
@@ -244,7 +248,7 @@ const userInitial = computed(() => {
 // 当前激活的菜单项
 const activeMenu = computed(() => {
   const path = router.currentRoute.value.path;
-  // 仪表盘路由已移除，不再识别
+  if (path.startsWith('/dashboard')) return 'dashboard';
   if (path.startsWith('/projects')) return 'projects';
   if (path.startsWith('/requirements')) return 'requirements'; // 添加对需求管理路由的识别
   if (path.startsWith('/testsuites')) return 'testsuites'; // 添加对测试套件路由的识别

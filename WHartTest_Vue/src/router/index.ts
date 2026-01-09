@@ -39,7 +39,7 @@ const routes: Array<RouteRecordRaw> = [
     path: '/', // 主应用布局的根路径
     component: MainLayout,
     meta: { requiresAuth: true },
-    redirect: '/projects', // 默认重定向到项目管理
+    redirect: '/dashboard', // 默认重定向到首页
     children: [
       {
         path: 'dashboard',
@@ -167,11 +167,11 @@ router.beforeEach((to, _from, next) => {
     // 如果目标路由需要认证但用户未登录，重定向到登录页
     next({ name: 'Login', query: { redirect: to.fullPath } });
   } else if ((to.name === 'Login' || to.name === 'Register') && isLoggedIn) {
-    // 如果用户已登录并尝试访问登录页或注册页，重定向到项目管理
-    next({ name: 'ProjectManagement' });
+    // 如果用户已登录并尝试访问登录页或注册页，重定向到首页
+    next({ name: 'Dashboard' });
   } else if (to.path === '/' && isLoggedIn) {
-    // 如果用户已登录并访问根路径，重定向到项目管理
-    next({ name: 'ProjectManagement' });
+    // 如果用户已登录并访问根路径，重定向到首页
+    next({ name: 'Dashboard' });
   } else if (to.path === '/' && !isLoggedIn) {
     // 如果用户未登录并访问根路径，重定向到登录页
     next({ name: 'Login' });
