@@ -7,7 +7,7 @@
           allow-clear
           class="search-input"
           @search="onSearch"
-          :style="{ width: isSmallScreen ? '90px' : '130px' }"
+          :style="{ width: isSmallScreen ? '70px' : '130px' }"
           v-model="localSearchKeyword"
         />
         <a-select
@@ -31,7 +31,7 @@
           :max-tag-count="1"
           tag-nowrap
           class="review-status-filter"
-          :style="{ width: '180px' }"
+          :style="{ width: '190px' }"
           @change="onReviewStatusChange"
         >
           <a-option v-for="option in REVIEW_STATUS_OPTIONS" :key="option.value" :value="option.value">
@@ -645,7 +645,7 @@ defineExpose({
 }
 
 .review-status-filter {
-  width: 140px;
+  width: 10px;
   flex-shrink: 0;
 }
 

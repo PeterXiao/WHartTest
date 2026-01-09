@@ -271,13 +271,16 @@ const showGenerateCasesModal = () => {
 };
 
 const handleGenerateCasesSubmit = async (formData: {
+  generateMode: 'full' | 'title_only' | 'kb_complete' | 'kb_generate',
   requirementDocumentId: string,
   requirementModuleId: string,
   promptId: number,
   useKnowledgeBase: boolean,
   knowledgeBaseId?: string | null,
   testCaseModuleId: number,
-  selectedModule: { title: string, content: string }
+  selectedModule: { title: string, content: string },
+  selectedTestCaseIds: number[],
+  selectedTestCases: TestCase[],
 }) => {
   if (!currentProjectId.value) {
     Message.error('没有有效的项目ID');
@@ -286,8 +289,15 @@ const handleGenerateCasesSubmit = async (formData: {
 
   isGenerateCasesModalVisible.value = false;
 
-  // 构造一个结构清晰、更接近自然语言的 message
-  const message = `
+  let message = '';
+  let notificationTitle = '';
+  let notificationContent = '';
+  let notificationIdPrefix = '';
+
+  switch (formData.generateMode) {
+    case 'full':
+      // 完整生成模式（原有逻辑）
+      message = `
 请根据以下需求模块信息，为我生成测试用例。
 
 ---
@@ -301,25 +311,101 @@ ${formData.selectedModule.content}
 
 请注意：生成的测试用例最终需要被保存在 **项目ID "${currentProjectId.value}"** 下的 **测试用例模块ID "${formData.testCaseModuleId}"** 中。
 (此需求模块来源于需求文档ID: ${formData.requirementDocumentId})
-  `.trim();
+      `.trim();
+      notificationTitle = '生成已开始';
+      notificationContent = '用例生成任务已在后台开始处理。';
+      notificationIdPrefix = 'gen-case';
+      break;
+
+    case 'title_only':
+      // 标题生成模式
+      message = `
+请根据以下需求模块信息，只生成测试用例的标题列表，不需要生成测试步骤。
+
+---
+[需求模块标题]
+${formData.selectedModule.title}
+
+---
+[需求模块内容]
+${formData.selectedModule.content}
+---
+
+请注意：
+- 只需要生成用例标题，不需要生成详细的测试步骤和预期结果
+- 生成的测试用例最终需要被保存在 **项目ID "${currentProjectId.value}"** 下的 **测试用例模块ID "${formData.testCaseModuleId}"** 中
+(此需求模块来源于需求文档ID: ${formData.requirementDocumentId})
+      `.trim();
+      notificationTitle = '标题生成已开始';
+      notificationContent = '用例标题生成任务已在后台开始处理。';
+      notificationIdPrefix = 'gen-title';
+      break;
+
+    case 'kb_complete':
+      // 知识库补全模式（禁止生成，只能从知识库检索）
+      message = `
+请根据知识库中的相似测试用例，为以下用例补全测试步骤。
+
+【重要约束】
+- 只能从知识库中检索相似用例，直接复用其测试步骤
+- 严禁自行生成或创造任何步骤内容
+- 如果知识库中没有相似用例，请明确告知无法补全，不要自行编造步骤
+- 根据用例名称在知识库中检索最相似的用例
+
+[待补全用例列表]
+${formData.selectedTestCases.map(tc => `- 用例ID: ${tc.id}, 名称: ${tc.name}, 优先级: ${tc.level}, 所属模块: ${tc.module_detail || '未分配'}`).join('\n')}
+
+项目ID: ${currentProjectId.value}
+      `.trim();
+      notificationTitle = '补全已开始';
+      notificationContent = '用例补全任务已在后台开始处理。';
+      notificationIdPrefix = 'kb-complete';
+      break;
+
+    case 'kb_generate':
+      // 知识生成模式（基于知识库+需求文档，禁止猜测）
+      message = `
+请根据知识库和需求文档的知识，为以下用例生成测试步骤。
+
+【重要约束】
+- 必须基于知识库和需求文档中的实际内容
+- 严禁猜测或假设任何功能行为
+- 生成的步骤必须有知识库或需求文档作为依据
+- 如果无法从知识库和需求文档中找到相关信息，请明确告知
+
+[待生成步骤的用例列表]
+${formData.selectedTestCases.map(tc => `- 用例ID: ${tc.id}, 名称: ${tc.name}, 优先级: ${tc.level}, 所属模块: ${tc.module_detail || '未分配'}`).join('\n')}
+
+[需求模块参考]
+标题: ${formData.selectedModule?.title || '无'}
+内容: ${formData.selectedModule?.content || '无'}
+
+项目ID: ${currentProjectId.value}
+      `.trim();
+      notificationTitle = '知识生成已开始';
+      notificationContent = '用例知识生成任务已在后台开始处理。';
+      notificationIdPrefix = 'kb-generate';
+      break;
+  }
 
   const requestData: ChatRequest = {
     message,
     project_id: String(currentProjectId.value),
     prompt_id: formData.promptId,
-    use_knowledge_base: formData.useKnowledgeBase,
+    use_knowledge_base: formData.generateMode === 'full' ? formData.useKnowledgeBase : ['kb_complete', 'kb_generate'].includes(formData.generateMode),
   };
 
-  // 如果启用了知识库并且选择了具体的知识库，则添加ID
-  if (formData.useKnowledgeBase && formData.knowledgeBaseId) {
+  // 如果需要知识库，添加知识库ID
+  if ((formData.generateMode === 'full' && formData.useKnowledgeBase && formData.knowledgeBaseId) ||
+      (['kb_complete', 'kb_generate'].includes(formData.generateMode) && formData.knowledgeBaseId)) {
     requestData.knowledge_base_id = formData.knowledgeBaseId;
   }
 
   startAutomationTask(
     requestData,
-    '生成已开始',
-    '用例生成任务已在后台开始处理。',
-    'gen-case',
+    notificationTitle,
+    notificationContent,
+    notificationIdPrefix,
     '点此查看生成过程'
   );
 };
