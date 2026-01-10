@@ -11,9 +11,9 @@
 
       <!-- 右侧内容区域 - 根据视图模式动态切换 -->
       <div class="right-content-area">
-        <!-- 列表视图 -->
+        <!-- 列表视图 - 使用 v-show 保持组件状态（筛选条件等） -->
         <TestCaseList
-          v-if="viewMode === 'list'"
+          v-show="viewMode === 'list'"
           :current-project-id="currentProjectId"
           :selected-module-id="selectedModuleId"
           :module-tree="moduleTreeForForm"
@@ -30,25 +30,31 @@
 
         <!-- 添加/编辑测试用例表单 -->
         <TestCaseForm
-          v-else-if="viewMode === 'add' || viewMode === 'edit'"
+          v-if="viewMode === 'add' || viewMode === 'edit'"
           :is-editing="viewMode === 'edit'"
           :test-case-id="currentEditingTestCaseId"
           :current-project-id="currentProjectId"
           :initial-selected-module-id="selectedModuleId"
           :module-tree="moduleTreeForForm"
+          :test-case-ids="testCaseIdsForNavigation"
           @close="backToList"
           @submit-success="handleFormSubmitSuccess"
+          @navigate="handleNavigateTestCase"
+          @review-status-changed="handleReviewStatusChanged"
         />
 
         <!-- 查看测试用例详情 -->
         <TestCaseDetail
-          v-else-if="viewMode === 'view'"
+          v-if="viewMode === 'view'"
           :test-case-id="currentViewingTestCaseId"
           :current-project-id="currentProjectId"
           :modules="allModules"
+          :test-case-ids="testCaseIdsForNavigation"
           @close="backToList"
           @edit-test-case="showEditTestCaseForm"
           @test-case-deleted="handleViewDetailTestCaseDeleted"
+          @navigate="handleNavigateViewTestCase"
+          @review-status-changed="handleReviewStatusChanged"
         />
       </div>
     </div>
@@ -109,6 +115,7 @@ const isExecuteModalVisible = ref(false);
 const isOptimizationModalVisible = ref(false);
 const pendingExecuteTestCase = ref<TestCase | null>(null);
 const pendingOptimizationTestCase = ref<TestCase | null>(null);
+const testCaseIdsForNavigation = ref<number[]>([]); // 用于编辑页面导航的用例ID列表
 
 const modulePanelRef = ref<InstanceType<typeof ModuleManagementPanel> | null>(null);
 const testCaseListRef = ref<InstanceType<typeof TestCaseList> | null>(null);
@@ -232,13 +239,70 @@ const showAddTestCaseForm = () => {
 };
 
 const showEditTestCaseForm = (testCaseOrId: TestCase | number) => {
+  // 先获取当前筛选后的用例ID列表用于导航（在切换视图之前获取）
+  const ids = testCaseListRef.value?.getTestCaseIds();
+  testCaseIdsForNavigation.value = ids || [];
+  console.log('获取到的用例ID列表:', testCaseIdsForNavigation.value);
+
   currentEditingTestCaseId.value = typeof testCaseOrId === 'number' ? testCaseOrId : testCaseOrId.id;
   viewMode.value = 'edit';
 };
 
+// 处理编辑页面的用例导航
+const handleNavigateTestCase = (testCaseId: number) => {
+  currentEditingTestCaseId.value = testCaseId;
+};
+
 const showViewTestCaseDetail = (testCase: TestCase) => {
+  // 获取当前筛选后的用例ID列表用于导航
+  const ids = testCaseListRef.value?.getTestCaseIds();
+  testCaseIdsForNavigation.value = ids || [];
+
   currentViewingTestCaseId.value = testCase.id;
   viewMode.value = 'view';
+};
+
+// 处理详情页面的用例导航
+const handleNavigateViewTestCase = (testCaseId: number) => {
+  currentViewingTestCaseId.value = testCaseId;
+};
+
+// 处理审核状态变更后刷新导航ID列表并自动跳转
+const handleReviewStatusChanged = async () => {
+  // 获取当前用例ID（编辑模式或查看模式）
+  const currentId = viewMode.value === 'edit'
+    ? currentEditingTestCaseId.value
+    : currentViewingTestCaseId.value;
+
+  // 获取当前用例在旧列表中的索引
+  const oldIndex = currentId ? testCaseIdsForNavigation.value.indexOf(currentId) : -1;
+
+  // 刷新列表数据
+  await testCaseListRef.value?.refreshTestCases();
+
+  // 重新获取筛选后的用例ID列表
+  const newIds = testCaseListRef.value?.getTestCaseIds() || [];
+  testCaseIdsForNavigation.value = newIds;
+
+  // 检查当前用例是否还在新列表中
+  if (currentId && !newIds.includes(currentId)) {
+    // 当前用例不再符合筛选条件，需要自动跳转
+    if (newIds.length === 0) {
+      // 没有符合条件的用例了，返回列表
+      backToList();
+      return;
+    }
+
+    // 尝试跳转到原索引位置的用例，如果超出范围则跳到最后一条
+    const nextIndex = Math.min(oldIndex, newIds.length - 1);
+    const nextId = newIds[Math.max(0, nextIndex)];
+
+    if (viewMode.value === 'edit') {
+      currentEditingTestCaseId.value = nextId;
+    } else {
+      currentViewingTestCaseId.value = nextId;
+    }
+  }
 };
 
 const backToList = () => {

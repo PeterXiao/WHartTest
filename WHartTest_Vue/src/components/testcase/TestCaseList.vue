@@ -578,6 +578,8 @@ watch(selectedModuleId, (newVal) => {
 // 暴露给父组件的方法
 defineExpose({
   refreshTestCases: fetchTestCases,
+  // 获取当前筛选后的用例ID列表（用于编辑页面导航）
+  getTestCaseIds: () => testCaseData.value.map(tc => tc.id),
 });
 
 </script>
