@@ -63,6 +63,7 @@ export default defineConfig({
               { text: 'MCP 工具部署', link: '/quick-start/mcp-deployment' },
             ]},
             { text: '配置流程', link:'/quick-start/example-deployment'},
+            { text: '操作手册', link: '/quick-start/operation-manual' },
             { text: '常见问题', link: '/quick-start/problem-deployment' }
           ]
         }
