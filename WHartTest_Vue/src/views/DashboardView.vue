@@ -195,13 +195,13 @@
               <span class="panel-title">近7天执行趋势</span>
               <div class="trend-summary">
                 <span class="summary-item">
-                  近30天: <strong>{{ statistics?.execution_trend?.summary_30d?.execution_count || 0 }}</strong> 次
+                  近7天: <strong>{{ statistics?.execution_trend?.summary_7d?.execution_count || 0 }}</strong> 次
                 </span>
                 <span class="summary-item passed">
-                  通过 <strong>{{ statistics?.execution_trend?.summary_30d?.passed || 0 }}</strong>
+                  通过 <strong>{{ statistics?.execution_trend?.summary_7d?.passed || 0 }}</strong>
                 </span>
                 <span class="summary-item failed">
-                  失败 <strong>{{ statistics?.execution_trend?.summary_30d?.failed || 0 }}</strong>
+                  失败 <strong>{{ statistics?.execution_trend?.summary_7d?.failed || 0 }}</strong>
                 </span>
               </div>
             </div>

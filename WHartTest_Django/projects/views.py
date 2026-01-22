@@ -283,10 +283,9 @@ class ProjectViewSet(BaseModelViewSet):
             total_cases=Sum('total_count'),
         )
 
-        # 4. 执行历史趋势（近7天和近30天）
+        # 4. 执行历史趋势（近7天）
         now = timezone.now()
         seven_days_ago = now - timedelta(days=7)
-        thirty_days_ago = now - timedelta(days=30)
 
         # 近7天每日执行统计
         daily_stats_7d = []
@@ -307,8 +306,8 @@ class ProjectViewSet(BaseModelViewSet):
             })
         daily_stats_7d.reverse()
 
-        # 近30天统计汇总
-        stats_30d = executions.filter(created_at__gte=thirty_days_ago).aggregate(
+        # 近7天统计汇总
+        stats_7d = executions.filter(created_at__gte=seven_days_ago).aggregate(
             execution_count=Count('id'),
             passed=Sum('passed_count'),
             failed=Sum('failed_count'),
@@ -367,10 +366,10 @@ class ProjectViewSet(BaseModelViewSet):
             },
             'execution_trend': {
                 'daily_7d': daily_stats_7d,
-                'summary_30d': {
-                    'execution_count': stats_30d['execution_count'] or 0,
-                    'passed': stats_30d['passed'] or 0,
-                    'failed': stats_30d['failed'] or 0,
+                'summary_7d': {
+                    'execution_count': stats_7d['execution_count'] or 0,
+                    'passed': stats_7d['passed'] or 0,
+                    'failed': stats_7d['failed'] or 0,
                 },
             },
             'mcp': mcp_stats,
