@@ -1,0 +1,241 @@
+#!/usr/bin/env python
+"""
+UI自动化执行器 - 主入口
+参考 MangoTestingPlatform 的 MangoActuator 设计
+
+启动方式:
+    # 使用配置文件
+    python main.py
+    python main.py --config config.toml
+    
+    # 使用命令行参数（覆盖配置文件）
+    python main.py --server ws://localhost:8000/ws/ui/actuator/
+    python main.py --server ws://localhost:8000/ws/ui/actuator/ --id my-actuator
+"""
+
+import argparse
+import asyncio
+import logging
+import os
+import signal
+import sys
+from pathlib import Path
+from typing import Any
+
+# 添加当前目录到路径
+sys.path.insert(0, str(Path(__file__).parent))
+
+from websocket_client import WebSocketClient
+from consumer import TaskConsumer
+
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    try:
+        import tomli as tomllib  # fallback for older Python
+    except ImportError:
+        tomllib = None
+
+
+class Config:
+    """配置类"""
+    
+    def __init__(self):
+        # 默认配置
+        self.ws_url = "ws://localhost:8000/ws/ui/actuator/"
+        self.api_url = "http://localhost:8000"
+        self.api_username = "admin"
+        self.api_password = "admin123"
+        self.actuator_id: str | None = None
+        self.actuator_name: str | None = None
+        self.actuator_description: str | None = None
+        
+        # 浏览器配置
+        self.browser_type = "chromium"
+        self.headless = False
+        self.persistent = True
+        self.user_data_dir = "./data/browser"
+        self.launch_timeout = 30
+        self.action_timeout = 30
+        
+        # 执行配置
+        self.retry_count = 3
+        self.step_interval = 500
+        self.screenshot_dir = "./data/screenshots"
+        
+        # 日志配置
+        self.log_level = "INFO"
+        self.log_file: str | None = None
+    
+    def load_from_toml(self, filepath: str) -> None:
+        """从TOML文件加载配置"""
+        if not tomllib:
+            logging.warning("tomllib/tomli 未安装，跳过配置文件加载")
+            return
+            
+        path = Path(filepath)
+        if not path.exists():
+            logging.info(f"配置文件不存在: {filepath}")
+            return
+            
+        with open(path, 'rb') as f:
+            data = tomllib.load(f)
+        
+        # 服务器配置
+        if 'server' in data:
+            self.ws_url = data['server'].get('ws_url', self.ws_url)
+            self.api_url = data['server'].get('api_url', self.api_url)
+            self.api_username = data['server'].get('api_username', self.api_username)
+            self.api_password = data['server'].get('api_password', self.api_password)
+        
+        # 执行器配置
+        if 'actuator' in data:
+            self.actuator_name = data['actuator'].get('name')
+            self.actuator_description = data['actuator'].get('description')
+        
+        # 浏览器配置
+        if 'browser' in data:
+            browser = data['browser']
+            self.browser_type = browser.get('browser_type', self.browser_type)
+            self.headless = browser.get('headless', self.headless)
+            self.persistent = browser.get('persistent', self.persistent)
+            self.user_data_dir = browser.get('user_data_dir', self.user_data_dir)
+            self.launch_timeout = browser.get('launch_timeout', self.launch_timeout)
+            self.action_timeout = browser.get('action_timeout', self.action_timeout)
+        
+        # 执行配置
+        if 'execution' in data:
+            execution = data['execution']
+            self.retry_count = execution.get('retry_count', self.retry_count)
+            self.step_interval = execution.get('step_interval', self.step_interval)
+            self.screenshot_dir = execution.get('screenshot_dir', self.screenshot_dir)
+        
+        # 日志配置
+        if 'logging' in data:
+            self.log_level = data['logging'].get('level', self.log_level)
+            self.log_file = data['logging'].get('file')
+    
+    def apply_args(self, args: argparse.Namespace) -> None:
+        """应用命令行参数（覆盖配置文件）"""
+        if args.server:
+            self.ws_url = args.server
+        if args.api:
+            self.api_url = args.api
+        if args.id:
+            self.actuator_id = args.id
+        if args.log_level:
+            self.log_level = args.log_level
+
+
+def setup_logging(level: str = 'INFO', log_file: str | None = None):
+    """配置日志"""
+    handlers = [logging.StreamHandler()]
+    
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+    
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=handlers
+    )
+
+
+def parse_args():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='UI自动化执行器')
+    parser.add_argument(
+        '--config', '-c',
+        default='config.toml',
+        help='配置文件路径 (默认: config.toml)'
+    )
+    parser.add_argument(
+        '--server', '-s',
+        default=None,
+        help='WebSocket服务器地址 (覆盖配置文件)'
+    )
+    parser.add_argument(
+        '--api', '-a',
+        default=None,
+        help='API服务器地址 (覆盖配置文件)'
+    )
+    parser.add_argument(
+        '--id', '-i',
+        default=None,
+        help='执行器ID (覆盖配置文件)'
+    )
+    parser.add_argument(
+        '--log-level', '-l',
+        default=None,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        help='日志级别 (覆盖配置文件)'
+    )
+    return parser.parse_args()
+
+
+async def main():
+    """主函数"""
+    args = parse_args()
+    
+    # 加载配置
+    config = Config()
+    config.load_from_toml(args.config)
+    config.apply_args(args)
+    
+    # 配置日志
+    setup_logging(config.log_level, config.log_file)
+    logger = logging.getLogger('actuator')
+    
+    # 生成执行器ID
+    actuator_id = config.actuator_id or f"actuator-{os.getpid()}"
+    
+    logger.info("=" * 50)
+    logger.info("UI自动化执行器启动")
+    logger.info(f"执行器ID: {actuator_id}")
+    if config.actuator_name:
+        logger.info(f"执行器名称: {config.actuator_name}")
+    logger.info(f"WebSocket服务器: {config.ws_url}")
+    logger.info(f"API服务器: {config.api_url}")
+    logger.info(f"浏览器类型: {config.browser_type}")
+    logger.info(f"无头模式: {config.headless}")
+    logger.info("=" * 50)
+    
+    # 创建WebSocket客户端，传递配置
+    ws_client = WebSocketClient(config.ws_url, actuator_id, config)
+    
+    # 创建任务消费者，传递配置
+    consumer = TaskConsumer(
+        ws_client, 
+        config.api_url, 
+        config,
+        api_username=config.api_username,
+        api_password=config.api_password
+    )
+    
+    # 设置信号处理
+    loop = asyncio.get_event_loop()
+    
+    def signal_handler():
+        logger.info("收到停止信号，正在关闭...")
+        consumer.stop()
+        asyncio.create_task(ws_client.disconnect())
+    
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
+    
+    try:
+        await consumer.run()
+    except KeyboardInterrupt:
+        logger.info("用户中断")
+    except Exception as e:
+        logger.error(f"执行器异常: {e}", exc_info=True)
+    finally:
+        await ws_client.disconnect()
+        logger.info("执行器已停止")
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

@@ -94,6 +94,7 @@ INSTALLED_APPS = [
     'orchestrator_integration', # 智能编排集成应用
     'skills', # Skill 管理应用
     'testcase_templates', # 用例导入导出模版管理应用
+    'ui_automation', # UI 自动化应用
 ]
 
 # ASGI 配置（用于 Channels WebSocket）

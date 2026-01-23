@@ -61,6 +61,7 @@ urlpatterns = [
     path('api/requirements/', include('requirements.urls')), # 需求评审管理 URLs
     path('api/orchestrator/', include('orchestrator_integration.urls')), # 智能编排 URLs
     path('api/', include('testcase_templates.urls')), # 用例导入导出模版 URLs
+    path('api/ui-automation/', include('ui_automation.urls')), # UI 自动化 URLs
     # DRF Spectacular - OpenAPI schema and docs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:

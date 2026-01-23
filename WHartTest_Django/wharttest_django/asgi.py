@@ -22,7 +22,11 @@ from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
 
 # 导入 WebSocket 路由
-from testcases.routing import websocket_urlpatterns
+from testcases.routing import websocket_urlpatterns as testcase_ws_patterns
+from ui_automation.routing import websocket_urlpatterns as ui_ws_patterns
+
+# 合并所有 WebSocket 路由
+all_websocket_patterns = testcase_ws_patterns + ui_ws_patterns
 
 # Django ASGI 应用
 django_asgi_app = get_asgi_application()
@@ -32,6 +36,6 @@ application = ProtocolTypeRouter({
     "http": django_asgi_app,
     # WebSocket 请求使用 Channels 处理
     "websocket": AllowedHostsOriginValidator(
-        URLRouter(websocket_urlpatterns)
+        URLRouter(all_websocket_patterns)
     ),
 })

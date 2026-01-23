@@ -98,6 +98,10 @@
               <template #icon><icon-code-block /></template>
               <a href="#" @click="checkProjectAndNavigate($event, '/testcases')">用例管理</a>
             </a-menu-item>
+            <a-menu-item key="ui-automation" v-if="hasAutomationScriptsPermission">
+              <template #icon><icon-computer /></template>
+              <a href="#" @click="checkProjectAndNavigate($event, '/ui-automation')">UI自动化</a>
+            </a-menu-item>
             <a-menu-item key="automation-scripts" v-if="hasAutomationScriptsPermission">
               <template #icon><icon-robot /></template>
               <a href="#" @click="checkProjectAndNavigate($event, '/automation-scripts')">UI脚本库</a>
@@ -222,6 +226,7 @@ import {
   IconExperiment,
   IconRobot,
   IconHome,
+  IconComputer,
 } from '@arco-design/web-vue/es/icon';
 import '@arco-design/web-vue/dist/arco.css'; // 引入 Arco Design 样式
 

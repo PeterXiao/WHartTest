@@ -5,16 +5,19 @@ class IsProjectMemberForTestCase(permissions.BasePermission):
     """
     自定义权限，用于检查用户是否是与 TestCase 关联的项目的成员。
     允许项目所有者、管理员和普通成员访问。
+    echo "我就是在项目1创建的项目，然后项目的模块管理不显示模块树，这应该是前端的问题"    超级管理员(is_superuser=True)可以访问所有项目。
     """
 
     def has_permission(self, request, view):
         """
         检查用户是否有权限访问列表视图或创建操作。
-        对于列表视图，通常在 get_queryset 中进一步过滤。
-        对于创建操作，需要确保 project_pk 在 URL 中。
         """
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有项目
+        if request.user.is_superuser:
+            return True
 
         project_pk = view.kwargs.get('project_pk')
         if not project_pk or str(project_pk).lower() in ('none', 'null', 'undefined'):
@@ -38,6 +41,10 @@ class IsProjectMemberForTestCase(permissions.BasePermission):
         """
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有对象
+        if request.user.is_superuser:
+            return True
 
         # TestCase 对象应该有一个 project 属性
         if not hasattr(obj, 'project'):
@@ -70,16 +77,19 @@ class IsProjectMemberForTestCaseModule(permissions.BasePermission):
     """
     自定义权限，用于检查用户是否是与 TestCaseModule 关联的项目的成员。
     允许项目所有者、管理员和普通成员访问。
+    超级管理员(is_superuser=True)可以访问所有项目。
     """
 
     def has_permission(self, request, view):
         """
         检查用户是否有权限访问列表视图或创建操作。
-        对于列表视图，通常在 get_queryset 中进一步过滤。
-        对于创建操作，需要确保 project_pk 在 URL 中。
         """
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有项目
+        if request.user.is_superuser:
+            return True
 
         project_pk = view.kwargs.get('project_pk')
         if not project_pk or str(project_pk).lower() in ('none', 'null', 'undefined'):
@@ -103,6 +113,10 @@ class IsProjectMemberForTestCaseModule(permissions.BasePermission):
         """
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有对象
+        if request.user.is_superuser:
+            return True
 
         # TestCaseModule 对象应该有一个 project 属性
         if not hasattr(obj, 'project'):
@@ -119,12 +133,17 @@ class IsProjectMemberForTestCaseModule(permissions.BasePermission):
 class IsProjectMemberForTestSuite(permissions.BasePermission):
     """
     自定义权限，用于检查用户是否是与 TestSuite 关联的项目的成员。
+    超级管理员(is_superuser=True)可以访问所有项目。
     """
 
     def has_permission(self, request, view):
         """检查用户是否有权限访问列表视图或创建操作"""
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有项目
+        if request.user.is_superuser:
+            return True
 
         project_pk = view.kwargs.get('project_pk')
         if not project_pk or str(project_pk).lower() in ('none', 'null', 'undefined'):
@@ -145,6 +164,10 @@ class IsProjectMemberForTestSuite(permissions.BasePermission):
         """检查用户是否对单个TestSuite实例有权限"""
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有对象
+        if request.user.is_superuser:
+            return True
 
         if not hasattr(obj, 'project'):
             return False
@@ -159,12 +182,17 @@ class IsProjectMemberForTestSuite(permissions.BasePermission):
 class IsProjectMemberForTestExecution(permissions.BasePermission):
     """
     自定义权限，用于检查用户是否是与 TestExecution 关联的项目的成员。
+    超级管理员(is_superuser=True)可以访问所有项目。
     """
 
     def has_permission(self, request, view):
         """检查用户是否有权限访问列表视图或创建操作"""
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有项目
+        if request.user.is_superuser:
+            return True
 
         project_pk = view.kwargs.get('project_pk')
         if not project_pk or str(project_pk).lower() in ('none', 'null', 'undefined'):
@@ -185,6 +213,10 @@ class IsProjectMemberForTestExecution(permissions.BasePermission):
         """检查用户是否对单个TestExecution实例有权限"""
         if not request.user or not request.user.is_authenticated:
             return False
+        
+        # 超级管理员可以访问所有对象
+        if request.user.is_superuser:
+            return True
 
         # TestExecution通过suite关联到project
         if not hasattr(obj, 'suite') or not hasattr(obj.suite, 'project'):

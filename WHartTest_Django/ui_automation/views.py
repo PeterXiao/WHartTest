@@ -1,0 +1,318 @@
+# -*- coding: utf-8 -*-
+"""UI 自动化视图"""
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+
+from .models import (
+    UiModule, UiPage, UiElement, UiPageSteps, UiPageStepsDetailed,
+    UiTestCase, UiCaseStepsDetailed, UiExecutionRecord, UiPublicData, UiEnvironmentConfig
+)
+from .serializers import (
+    UiModuleSerializer, UiPageSerializer, UiPageDetailSerializer,
+    UiElementSerializer, UiPageStepsSerializer, UiPageStepsDetailSerializer,
+    UiPageStepsDetailedSerializer, UiTestCaseSerializer, UiTestCaseDetailSerializer,
+    UiCaseStepsDetailedSerializer, UiExecutionRecordSerializer,
+    UiPublicDataSerializer, UiEnvironmentConfigSerializer, UiTestCaseExecuteSerializer,
+    UiPageStepsExecuteSerializer
+)
+
+
+class UiModuleViewSet(viewsets.ModelViewSet):
+    """模块管理视图"""
+    queryset = UiModule.objects.select_related('project', 'parent', 'creator')
+    serializer_class = UiModuleSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['project', 'parent', 'level']
+    search_fields = ['name']
+    ordering_fields = ['name', 'level', 'created_at']
+    ordering = ['level', 'name']
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def tree(self, request):
+        """获取模块树形结构"""
+        project_id = request.query_params.get('project')
+        if not project_id:
+            return Response({'error': 'project 参数必填'}, status=status.HTTP_400_BAD_REQUEST)
+        modules = UiModule.objects.filter(project_id=project_id, parent__isnull=True)
+        serializer = self.get_serializer(modules, many=True)
+        return Response(serializer.data)
+
+
+class UiPageViewSet(viewsets.ModelViewSet):
+    """页面管理视图"""
+    queryset = UiPage.objects.select_related('project', 'module', 'creator')
+    serializer_class = UiPageSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['project', 'module']
+    search_fields = ['name', 'url']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['-id']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return UiPageDetailSerializer
+        return UiPageSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+
+class UiElementViewSet(viewsets.ModelViewSet):
+    """元素管理视图"""
+    queryset = UiElement.objects.select_related('page', 'creator')
+    serializer_class = UiElementSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['page', 'locator_type', 'is_iframe']
+    search_fields = ['name', 'locator_value']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['-id']
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+
+class UiPageStepsViewSet(viewsets.ModelViewSet):
+    """页面步骤管理视图"""
+    queryset = UiPageSteps.objects.select_related('project', 'page', 'module', 'creator')
+    serializer_class = UiPageStepsSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['project', 'page', 'module', 'status']
+    search_fields = ['name']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['-id']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return UiPageStepsDetailSerializer
+        if self.action == 'execute_data':
+            return UiPageStepsExecuteSerializer
+        return UiPageStepsSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='execute-data')
+    def execute_data(self, request, pk=None):
+        """获取页面步骤执行数据（包含元素定位信息）"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+
+class UiPageStepsDetailedViewSet(viewsets.ModelViewSet):
+    """步骤详情管理视图"""
+    queryset = UiPageStepsDetailed.objects.select_related('page_step', 'element')
+    serializer_class = UiPageStepsDetailedSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['page_step', 'step_type']
+    ordering_fields = ['step_sort', 'created_at']
+    ordering = ['page_step', 'step_sort']
+
+    @action(detail=False, methods=['post'])
+    def batch_update(self, request):
+        """批量更新步骤详情"""
+        page_step_id = request.data.get('page_step')
+        steps = request.data.get('steps', [])
+        if not page_step_id:
+            return Response({'error': 'page_step 参数必填'}, status=status.HTTP_400_BAD_REQUEST)
+        # 删除旧步骤，创建新步骤
+        UiPageStepsDetailed.objects.filter(page_step_id=page_step_id).delete()
+        for idx, step_data in enumerate(steps):
+            step_data['page_step'] = page_step_id
+            step_data['step_sort'] = idx
+            serializer = self.get_serializer(data=step_data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        return Response({'message': '批量更新成功'})
+
+
+class UiTestCaseViewSet(viewsets.ModelViewSet):
+    """测试用例管理视图"""
+    queryset = UiTestCase.objects.select_related('project', 'module', 'creator')
+    serializer_class = UiTestCaseSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['project', 'module', 'level', 'status']
+    search_fields = ['name']
+    ordering_fields = ['name', 'level', 'created_at']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return UiTestCaseDetailSerializer
+        if self.action == 'execute_data':
+            return UiTestCaseExecuteSerializer
+        return UiTestCaseSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='execute-data')
+    def execute_data(self, request, pk=None):
+        """获取测试用例执行数据（包含完整的步骤详情）"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+
+class UiCaseStepsDetailedViewSet(viewsets.ModelViewSet):
+    """用例步骤管理视图"""
+    queryset = UiCaseStepsDetailed.objects.select_related('test_case', 'page_step')
+    serializer_class = UiCaseStepsDetailedSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['test_case', 'status']
+    ordering_fields = ['case_sort', 'created_at']
+    ordering = ['test_case', 'case_sort']
+
+    @action(detail=False, methods=['post'])
+    def batch_update(self, request):
+        """批量更新用例步骤"""
+        test_case_id = request.data.get('test_case')
+        steps = request.data.get('steps', [])
+        if not test_case_id:
+            return Response({'error': 'test_case 参数必填'}, status=status.HTTP_400_BAD_REQUEST)
+        # 删除旧步骤，创建新步骤
+        UiCaseStepsDetailed.objects.filter(test_case_id=test_case_id).delete()
+        for idx, step_data in enumerate(steps):
+            step_data['test_case'] = test_case_id
+            step_data['case_sort'] = idx
+            serializer = self.get_serializer(data=step_data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        return Response({'message': '批量更新成功'})
+
+
+class UiExecutionRecordViewSet(viewsets.ModelViewSet):
+    """执行记录管理视图"""
+    queryset = UiExecutionRecord.objects.select_related('test_case', 'executor')
+    serializer_class = UiExecutionRecordSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['test_case', 'status', 'trigger_type']
+    ordering_fields = ['created_at', 'duration']
+    ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        serializer.save(executor=self.request.user)
+
+
+class UiPublicDataViewSet(viewsets.ModelViewSet):
+    """公共数据管理视图"""
+    queryset = UiPublicData.objects.select_related('project', 'creator')
+    serializer_class = UiPublicDataSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['project', 'type', 'is_enabled']
+    search_fields = ['key']
+    ordering_fields = ['key', 'created_at']
+    ordering = ['project', 'key']
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+
+class UiEnvironmentConfigViewSet(viewsets.ModelViewSet):
+    """环境配置管理视图"""
+    queryset = UiEnvironmentConfig.objects.select_related('project', 'creator')
+    serializer_class = UiEnvironmentConfigSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['project', 'browser', 'headless', 'is_default']
+    search_fields = ['name', 'base_url']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['project', 'name']
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+
+class ActuatorViewSet(viewsets.ViewSet):
+    """执行器管理视图"""
+    permission_classes = []  # 公开访问，不需要特殊权限
+    
+    @action(detail=False, methods=['get'])
+    def list_actuators(self, request):
+        """获取所有在线执行器列表"""
+        from .consumers import SocketUserManager
+        
+        actuators = []
+        for actuator_id, consumer in SocketUserManager._actuator_users.items():
+            actuator_info = getattr(consumer, 'actuator_info', {})
+            actuators.append({
+                'id': actuator_id,
+                'name': actuator_info.get('name', actuator_id),
+                'ip': actuator_info.get('ip', 'unknown'),
+                'type': actuator_info.get('type', 'web_ui'),
+                'is_open': actuator_info.get('is_open', True),
+                'debug': actuator_info.get('debug', False),
+                'browser_type': actuator_info.get('browser_type', 'chromium'),
+                'headless': actuator_info.get('headless', False),
+                'connected_at': actuator_info.get('connected_at'),
+            })
+        
+        return Response({
+            'status': 'success',
+            'data': {
+                'count': len(actuators),
+                'items': actuators
+            }
+        })
+    
+    @action(detail=False, methods=['get'])
+    def status(self, request):
+        """获取执行器状态统计"""
+        from .consumers import SocketUserManager
+        
+        return Response({
+            'status': 'success',
+            'data': {
+                'total_actuators': SocketUserManager.get_actuator_count(),
+                'has_available': SocketUserManager.has_actuator(),
+                'web_users': len(SocketUserManager._web_users),
+            }
+        })
+
+
+# ---------- 截图上传 ----------
+import os
+import uuid
+from datetime import datetime
+from django.conf import settings
+from rest_framework.decorators import api_view, parser_classes
+from rest_framework.parsers import MultiPartParser
+
+
+from rest_framework.permissions import AllowAny
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser])
+def upload_screenshot(request):
+    """上传执行截图，返回可访问 URL
+    
+    注意：此接口使用 Bearer Token 认证
+    执行器通过 /api/token/ 获取 JWT Token 后调用此接口
+    """
+    file = request.FILES.get('file')
+    if not file:
+        return Response({'error': '未提供文件'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 保存到 media/ui_screenshots/{日期}/
+    date_dir = datetime.now().strftime('%Y%m%d')
+    upload_dir = os.path.join(settings.MEDIA_ROOT, 'ui_screenshots', date_dir)
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # 生成唯一文件名
+    ext = os.path.splitext(file.name)[1] or '.png'
+    filename = f"{uuid.uuid4().hex[:12]}{ext}"
+    file_path = os.path.join(upload_dir, filename)
+    
+    with open(file_path, 'wb') as f:
+        for chunk in file.chunks():
+            f.write(chunk)
+    
+    url = f"{settings.MEDIA_URL}ui_screenshots/{date_dir}/{filename}"
+    return Response({'status': 'success', 'url': url}, status=status.HTTP_201_CREATED)
