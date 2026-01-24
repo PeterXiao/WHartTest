@@ -8,7 +8,7 @@ from .views import (
     UiPageStepsViewSet, UiPageStepsDetailedViewSet,
     UiTestCaseViewSet, UiCaseStepsDetailedViewSet,
     UiExecutionRecordViewSet, UiPublicDataViewSet, UiEnvironmentConfigViewSet,
-    ActuatorViewSet, upload_screenshot
+    ActuatorViewSet, upload_screenshot, upload_trace
 )
 
 router = DefaultRouter()
@@ -26,4 +26,5 @@ router.register('actuators', ActuatorViewSet, basename='ui-actuators')
 
 urlpatterns = router.urls + [
     path('screenshots/upload/', upload_screenshot, name='ui-screenshot-upload'),
+    path('traces/upload/', upload_trace, name='ui-trace-upload'),
 ]

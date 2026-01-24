@@ -48,6 +48,12 @@ class TaskConsumer:
                 'launch_timeout': launch_timeout * 1000,  # 转毫秒
                 'action_timeout': action_timeout * 1000,  # 转毫秒
                 'screenshot_dir': getattr(config, 'screenshot_dir', './data/screenshots'),
+                # Trace 配置
+                'trace_enabled': getattr(config, 'trace_enabled', False),
+                'trace_dir': getattr(config, 'trace_dir', './data/traces'),
+                'trace_screenshots': getattr(config, 'trace_screenshots', True),
+                'trace_snapshots': getattr(config, 'trace_snapshots', True),
+                'trace_sources': getattr(config, 'trace_sources', False),
             }
         self.executor = PlaywrightExecutor(**executor_config)
         self.task_queue: asyncio.Queue[QueueModel] = asyncio.Queue()
@@ -140,6 +146,48 @@ class TaskConsumer:
                 else:
                     step.screenshot = None  # 编码失败则清空
         return result
+    
+    async def _upload_trace_file(self, trace_path: str) -> Optional[str]:
+        """上传 Trace 文件到服务器
+        
+        Returns:
+            服务器返回的相对路径（用于存储到数据库）
+        """
+        import os
+        
+        if not trace_path or not os.path.exists(trace_path):
+            logger.warning(f"Trace 文件不存在: {trace_path}")
+            return None
+        
+        token = await self._get_api_token()
+        if not token:
+            logger.error("无法获取 API Token，跳过 Trace 上传")
+            return None
+        
+        url = f"{self.api_base_url}/api/ui-automation/traces/upload/"
+        try:
+            async with httpx.AsyncClient() as client:
+                with open(trace_path, 'rb') as f:
+                    files = {'file': (os.path.basename(trace_path), f, 'application/zip')}
+                    response = await client.post(
+                        url,
+                        headers={"Authorization": f"Bearer {token}"},
+                        files=files,
+                        timeout=60.0  # Trace 文件可能较大
+                    )
+                    if response.status_code == 201:
+                        resp_data = response.json()
+                        # 响应被中间件包装，path 在 data 字段中
+                        inner_data = resp_data.get('data', resp_data)
+                        server_path = inner_data.get('path')
+                        logger.info(f"Trace 上传成功: {server_path}")
+                        return server_path
+                    else:
+                        logger.error(f"Trace 上传失败: {response.status_code}")
+                        return None
+        except Exception as e:
+            logger.error(f"Trace 上传异常: {e}")
+            return None
 
     async def handle_message(self, socket_data: SocketDataModel):
         """处理接收到的消息"""
@@ -298,6 +346,14 @@ class TaskConsumer:
         
         # 上传截图并替换路径
         result = await self._process_result_screenshots(result)
+        
+        # 上传 Trace 文件并替换路径
+        if result.trace_path:
+            server_trace_path = await self._upload_trace_file(result.trace_path)
+            if server_trace_path:
+                result.trace_path = server_trace_path
+            else:
+                result.trace_path = None  # 上传失败则清空
         
         # 发送用例结果
         await self.ws_client.send_result(

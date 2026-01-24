@@ -68,3 +68,4 @@ class CaseResultModel(BaseModel):
     failed_steps: int = 0
     duration: float = 0
     steps: list[StepResultModel] = []
+    trace_path: Optional[str] = None  # Playwright Trace 文件路径

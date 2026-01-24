@@ -195,12 +195,93 @@ export interface UiExecutionRecord {
   step_results: unknown[]
   screenshots: string[]
   video_path?: string
+  trace_path?: string           // Trace 文件路径
+  trace_data?: TraceData | null // 解析后的 Trace 数据
   log?: string
   error_message?: string
   start_time?: string
   end_time?: string
   duration?: number
   created_at: string
+}
+
+/** Trace 操作记录 */
+export interface TraceAction {
+  action_id: string
+  type: string
+  selector?: string
+  value?: string
+  url?: string
+  start_time: number
+  end_time: number
+  duration: number
+  page_id: string
+  error?: string
+}
+
+/** Trace 网络请求 */
+export interface TraceNetworkRequest {
+  request_id: string
+  url: string
+  method: string
+  resource_type: string
+  mime_type?: string
+  status: number
+  status_text: string
+  start_time: number
+  end_time: number
+  duration: number
+  request_headers: Record<string, string>
+  response_headers: Record<string, string>
+  response_size: number
+  request_body?: string
+  response_body?: string
+}
+
+/** Trace 控制台消息 */
+export interface TraceConsoleMessage {
+  type: string
+  text: string
+  timestamp: number
+  location?: {
+    url?: string
+    lineNumber?: number
+    columnNumber?: number
+  }
+}
+
+/** Trace 快照 */
+export interface TraceSnapshot {
+  snapshot_id: string
+  timestamp: number
+  screenshot?: string
+}
+
+/** Trace 解析数据 */
+export interface TraceData {
+  title: string
+  start_time: number
+  end_time: number
+  duration: number
+  page_url: string
+  actions: TraceAction[]
+  network_requests: TraceNetworkRequest[]
+  console_messages: TraceConsoleMessage[]
+  snapshots: TraceSnapshot[]
+  summary: {
+    total_actions: number
+    total_requests: number
+    total_console: number
+    total_snapshots: number
+    duration_ms: number
+    network: {
+      total: number
+      by_type: Record<string, number>
+      by_status: Record<string, number>
+      total_size: number
+    }
+    metadata: Record<string, unknown>
+  }
 }
 
 /** 公共数据类型 */

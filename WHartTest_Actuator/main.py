@@ -63,6 +63,13 @@ class Config:
         self.step_interval = 500
         self.screenshot_dir = "./data/screenshots"
         
+        # Trace 配置
+        self.trace_enabled = True
+        self.trace_dir = "./data/traces"
+        self.trace_screenshots = True
+        self.trace_snapshots = True
+        self.trace_sources = False
+        
         # 日志配置
         self.log_level = "INFO"
         self.log_file: str | None = None
@@ -109,6 +116,15 @@ class Config:
             self.retry_count = execution.get('retry_count', self.retry_count)
             self.step_interval = execution.get('step_interval', self.step_interval)
             self.screenshot_dir = execution.get('screenshot_dir', self.screenshot_dir)
+        
+        # Trace 配置
+        if 'trace' in data:
+            trace = data['trace']
+            self.trace_enabled = trace.get('enabled', self.trace_enabled)
+            self.trace_dir = trace.get('trace_dir', self.trace_dir)
+            self.trace_screenshots = trace.get('screenshots', self.trace_screenshots)
+            self.trace_snapshots = trace.get('snapshots', self.trace_snapshots)
+            self.trace_sources = trace.get('sources', self.trace_sources)
         
         # 日志配置
         if 'logging' in data:

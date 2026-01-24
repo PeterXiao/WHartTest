@@ -467,6 +467,9 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
             if step.get('screenshot'):
                 screenshots.append(step['screenshot'])
         
+        # 提取 trace 路径
+        trace_path = args.get('trace_path')
+        
         case_id = args.get('case_id')
         try:
             record = UiExecutionRecord.objects.create(
@@ -475,13 +478,14 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
                 trigger_type='manual',
                 step_results=steps,
                 screenshots=screenshots,
+                trace_path=trace_path,  # 保存 trace 文件路径
                 log=args.get('message', ''),
                 error_message=args.get('message') if status == 3 else None,
                 start_time=start_time,
                 end_time=end_time,
                 duration=duration
             )
-            logger.info(f"执行记录已保存: id={record.id}, case_id={case_id}, status={status}")
+            logger.info(f"执行记录已保存: id={record.id}, case_id={case_id}, status={status}, trace={trace_path}")
             
             # 同时更新测试用例的状态
             if case_id:

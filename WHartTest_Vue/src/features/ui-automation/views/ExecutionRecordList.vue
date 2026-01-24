@@ -87,7 +87,13 @@
           <a-descriptions-item label="开始时间">{{ currentRecord.start_time ? formatTime(currentRecord.start_time) : '-' }}</a-descriptions-item>
           <a-descriptions-item label="结束时间">{{ currentRecord.end_time ? formatTime(currentRecord.end_time) : '-' }}</a-descriptions-item>
           <a-descriptions-item label="执行时长">{{ currentRecord.duration != null ? `${currentRecord.duration.toFixed(2)}s` : '-' }}</a-descriptions-item>
-          <a-descriptions-item label="创建时间">{{ formatTime(currentRecord.created_at) }}</a-descriptions-item>
+          <a-descriptions-item label="执行追踪">
+            <a-button v-if="currentRecord.trace_path" type="primary" size="small" @click="viewTrace(currentRecord.id)">
+              <template #icon><icon-eye /></template>
+              查看 Trace
+            </a-button>
+            <span v-else>-</span>
+          </a-descriptions-item>
         </a-descriptions>
 
         <!-- 错误信息 -->
@@ -164,11 +170,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { IconRefresh, IconEye } from '@arco-design/web-vue/es/icon'
 import { executionRecordApi } from '../api'
 import type { UiExecutionRecord, ExecutionStatus } from '../types'
 import { STATUS_LABELS, extractPaginationData } from '../types'
 
+const router = useRouter()
 const loading = ref(false)
 const recordData = ref<UiExecutionRecord[]>([])
 const drawerVisible = ref(false)
@@ -295,6 +303,11 @@ const viewDetail = async (record: UiExecutionRecord) => {
   } catch {
     // 静默失败，使用列表数据
   }
+}
+
+/** 跳转到 Trace 详情页 */
+const viewTrace = (recordId: number) => {
+  router.push({ name: 'TraceDetail', params: { id: recordId } })
 }
 
 const refresh = () => fetchRecords()

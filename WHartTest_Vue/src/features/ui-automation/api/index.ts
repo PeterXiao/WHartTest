@@ -25,6 +25,7 @@ import type {
   UiPublicDataForm,
   UiEnvironmentConfigForm,
   PaginatedResponse,
+  TraceData,
 } from '../types'
 
 const BASE_URL = '/ui-automation'
@@ -154,6 +155,10 @@ export const executionRecordApi = {
 
   create: (data: Partial<UiExecutionRecord>) =>
     request.post<UiExecutionRecord>(`${BASE_URL}/execution-records/`, data),
+  
+  /** 获取执行记录的 Trace 数据 */
+  getTrace: (id: number, refresh?: boolean) =>
+    request.get<TraceData>(`${BASE_URL}/execution-records/${id}/trace/`, { params: refresh ? { refresh: '1' } : {} }),
 }
 
 // ==================== 公共数据管理 ====================

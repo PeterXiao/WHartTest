@@ -64,6 +64,11 @@ class PlaywrightExecutor:
         launch_timeout: int = 30000,
         action_timeout: int = 30000,
         screenshot_dir: str = './data/screenshots',
+        trace_enabled: bool = False,
+        trace_dir: str = './data/traces',
+        trace_screenshots: bool = True,
+        trace_snapshots: bool = True,
+        trace_sources: bool = False,
     ):
         self.browser_type = browser_type
         self.headless = headless
@@ -73,14 +78,24 @@ class PlaywrightExecutor:
         self.action_timeout = action_timeout
         self.screenshot_dir = screenshot_dir
         
+        # Trace 配置
+        self.trace_enabled = trace_enabled
+        self.trace_dir = trace_dir
+        self.trace_screenshots = trace_screenshots
+        self.trace_snapshots = trace_snapshots
+        self.trace_sources = trace_sources
+        
         self._playwright: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
         self._stop_requested = False
+        self._current_trace_path: Optional[str] = None
         
         Path(self.user_data_dir).mkdir(parents=True, exist_ok=True)
         Path(self.screenshot_dir).mkdir(parents=True, exist_ok=True)
+        if self.trace_enabled:
+            Path(self.trace_dir).mkdir(parents=True, exist_ok=True)
     
     async def init_browser(self) -> None:
         """初始化浏览器"""
@@ -131,6 +146,52 @@ class PlaywrightExecutor:
         finally:
             await self.close()
     
+    @asynccontextmanager
+    async def browser_session_with_trace(self, trace_name: str = 'trace'):
+        """带 Trace 的浏览器会话上下文管理器
+        
+        Args:
+            trace_name: trace 文件名前缀（不含扩展名）
+            
+        Yields:
+            Page: 页面对象
+            
+        Returns:
+            trace 文件路径（通过 self._current_trace_path 获取）
+        """
+        await self.init_browser()
+        self._current_trace_path = None
+        
+        try:
+            # 启动 Trace
+            if self.trace_enabled and self._context:
+                await self._context.tracing.start(
+                    screenshots=self.trace_screenshots,
+                    snapshots=self.trace_snapshots,
+                    sources=self.trace_sources,
+                )
+                logger.debug(f"Trace 已启动: screenshots={self.trace_screenshots}, snapshots={self.trace_snapshots}")
+            
+            yield self._page
+            
+        finally:
+            # 停止 Trace 并保存
+            if self.trace_enabled and self._context:
+                try:
+                    timestamp = int(time.time() * 1000)
+                    trace_path = f"{self.trace_dir}/{trace_name}_{timestamp}.zip"
+                    await self._context.tracing.stop(path=trace_path)
+                    self._current_trace_path = trace_path
+                    logger.info(f"Trace 已保存: {trace_path}")
+                except Exception as e:
+                    logger.error(f"保存 Trace 失败: {e}")
+            
+            await self.close()
+    
+    def get_current_trace_path(self) -> Optional[str]:
+        """获取当前执行的 trace 文件路径"""
+        return self._current_trace_path
+
     def stop(self):
         """请求停止执行"""
         self._stop_requested = True
@@ -284,7 +345,7 @@ class PlaywrightExecutor:
             )
     
     async def execute_test_case(self, config: TestCaseConfig) -> CaseResultModel:
-        """执行测试用例"""
+        """执行测试用例（支持 Trace 记录）"""
         start_time = time.time()
         step_results = []
         passed_steps = 0
@@ -292,9 +353,11 @@ class PlaywrightExecutor:
         total_steps = sum(len(ps.steps) for ps in config.page_steps)
         
         self._stop_requested = False
+        trace_name = f"case_{config.case_id}"
         
         try:
-            async with self.browser_session() as page:
+            # 使用带 trace 的浏览器会话
+            async with self.browser_session_with_trace(trace_name) as page:
                 logger.info(f"开始执行用例: {config.case_name}")
                 
                 for page_step in config.page_steps:
@@ -370,21 +433,33 @@ class PlaywrightExecutor:
                 message = f"用例执行{'成功' if status == 'success' else '失败'}: 通过 {passed_steps}/{total_steps}"
                 logger.info(f"✅ {message}" if status == 'success' else f"❌ {message}")
                 
-                return CaseResultModel(
-                    case_id=config.case_id,
-                    status=status,
-                    message=message,
-                    total_steps=total_steps,
-                    passed_steps=passed_steps,
-                    failed_steps=failed_steps,
-                    duration=duration,
-                    steps=step_results
-                )
+                # 获取 trace 文件路径（会在 browser_session_with_trace 结束时设置）
+                trace_path = None
+            
+            # 会话结束后获取 trace 路径
+            trace_path = self.get_current_trace_path()
+            if trace_path:
+                logger.info(f"用例执行 Trace 已记录: {trace_path}")
+            
+            return CaseResultModel(
+                case_id=config.case_id,
+                status=status,
+                message=message,
+                total_steps=total_steps,
+                passed_steps=passed_steps,
+                failed_steps=failed_steps,
+                duration=duration,
+                steps=step_results,
+                trace_path=trace_path
+            )
                 
         except Exception as e:
             duration = time.time() - start_time
             error_msg = str(e)
             logger.error(f"用例执行异常: {error_msg}\n{traceback.format_exc()}")
+            
+            # 尝试获取 trace 路径（可能已保存）
+            trace_path = self.get_current_trace_path()
             
             return CaseResultModel(
                 case_id=config.case_id,
@@ -394,7 +469,8 @@ class PlaywrightExecutor:
                 passed_steps=passed_steps,
                 failed_steps=failed_steps + (total_steps - passed_steps - failed_steps),
                 duration=duration,
-                steps=step_results
+                steps=step_results,
+                trace_path=trace_path
             )
 
     async def execute_page_step(self, config: PageStepConfig) -> list[StepResultModel]:

@@ -24,6 +24,7 @@ import AutomationScriptManagementView from '@/views/AutomationScriptManagementVi
 import SkillsManagementView from '@/features/skills/views/SkillsManagementView.vue'; // 导入 Skills 管理视图
 import TemplateManagementView from '@/features/testcase-templates/views/TemplateManagementView.vue'; // 导入用例导入导出模版管理视图
 import UiAutomationView from '@/features/ui-automation/views/UiAutomationView.vue'; // 导入 UI 自动化视图
+import TraceDetailView from '@/features/ui-automation/views/TraceDetail.vue'; // 导入 Trace 详情视图
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -146,6 +147,12 @@ const routes: Array<RouteRecordRaw> = [
         path: 'ui-automation', // UI 自动化
         name: 'UiAutomation',
         component: UiAutomationView,
+      },
+      {
+        path: 'ui-automation/trace/:id', // Trace 详情页
+        name: 'TraceDetail',
+        component: TraceDetailView,
+        props: true,
       },
       // 其他受保护的子路由可以加在这里
     ]

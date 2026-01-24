@@ -318,6 +318,8 @@ class UiExecutionRecord(models.Model):
     step_results = models.JSONField(_('步骤执行详情'), default=list, blank=True)
     screenshots = models.JSONField(_('截图'), default=list, blank=True)
     video_path = models.CharField(_('视频路径'), max_length=500, null=True, blank=True)
+    trace_path = models.CharField(_('Trace 文件路径'), max_length=500, null=True, blank=True)
+    trace_data = models.JSONField(_('Trace 解析数据'), null=True, blank=True)
     log = models.TextField(_('执行日志'), blank=True, null=True)
     error_message = models.TextField(_('错误信息'), null=True, blank=True)
     start_time = models.DateTimeField(_('开始时间'), null=True, blank=True)

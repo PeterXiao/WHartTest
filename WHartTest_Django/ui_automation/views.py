@@ -199,6 +199,55 @@ class UiExecutionRecordViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(executor=self.request.user)
+    
+    @action(detail=True, methods=['get'], url_path='trace')
+    def get_trace_data(self, request, pk=None):
+        """获取执行记录的 Trace 数据
+
+        如果 trace_data 已解析则直接返回，否则尝试解析 trace_path
+        可通过 ?refresh=1 强制重新解析
+        """
+        instance = self.get_object()
+        refresh = request.query_params.get('refresh', '').lower() in ('1', 'true')
+
+        # 如果已有解析数据且不需要刷新，直接返回
+        if instance.trace_data and not refresh:
+            return Response({
+                'status': 'success',
+                'data': instance.trace_data
+            })
+        
+        # 尝试解析 trace 文件
+        if not instance.trace_path:
+            return Response({
+                'status': 'error',
+                'message': '此执行记录没有 Trace 数据'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        from .trace_parser import parse_trace_file
+        import os
+        from django.conf import settings
+        
+        # 构建完整路径
+        trace_path = instance.trace_path
+        if not os.path.isabs(trace_path):
+            trace_path = os.path.join(settings.MEDIA_ROOT, trace_path)
+        
+        trace_data = parse_trace_file(trace_path)
+        if not trace_data:
+            return Response({
+                'status': 'error',
+                'message': 'Trace 文件解析失败'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # 保存解析结果
+        instance.trace_data = trace_data
+        instance.save(update_fields=['trace_data'])
+        
+        return Response({
+            'status': 'success',
+            'data': trace_data
+        })
 
 
 class UiPublicDataViewSet(viewsets.ModelViewSet):
@@ -281,8 +330,9 @@ import os
 import uuid
 from datetime import datetime
 from django.conf import settings
-from rest_framework.decorators import api_view, parser_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 
 
 from rest_framework.permissions import AllowAny
@@ -290,6 +340,7 @@ from rest_framework.permissions import AllowAny
 
 @api_view(['POST'])
 @parser_classes([MultiPartParser])
+@permission_classes([IsAuthenticated])
 def upload_screenshot(request):
     """上传执行截图，返回可访问 URL
     
@@ -316,3 +367,40 @@ def upload_screenshot(request):
     
     url = f"{settings.MEDIA_URL}ui_screenshots/{date_dir}/{filename}"
     return Response({'status': 'success', 'url': url}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser])
+@permission_classes([IsAuthenticated])
+def upload_trace(request):
+    """上传 Playwright Trace 文件，返回可访问 URL
+    
+    注意：此接口使用 Bearer Token 认证
+    执行器执行完成后调用此接口上传 trace.zip 文件
+    """
+    file = request.FILES.get('file')
+    if not file:
+        return Response({'error': '未提供文件'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 保存到 media/ui_traces/{日期}/
+    date_dir = datetime.now().strftime('%Y%m%d')
+    upload_dir = os.path.join(settings.MEDIA_ROOT, 'ui_traces', date_dir)
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # 生成唯一文件名
+    ext = os.path.splitext(file.name)[1] or '.zip'
+    filename = f"{uuid.uuid4().hex[:12]}{ext}"
+    file_path = os.path.join(upload_dir, filename)
+    
+    with open(file_path, 'wb') as f:
+        for chunk in file.chunks():
+            f.write(chunk)
+    
+    # 返回相对路径（用于存储到数据库）和 URL（用于下载）
+    relative_path = f"ui_traces/{date_dir}/{filename}"
+    url = f"{settings.MEDIA_URL}{relative_path}"
+    return Response({
+        'status': 'success',
+        'url': url,
+        'path': relative_path
+    }, status=status.HTTP_201_CREATED)
