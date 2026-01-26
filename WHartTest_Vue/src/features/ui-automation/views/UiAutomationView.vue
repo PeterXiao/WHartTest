@@ -15,6 +15,9 @@
         <a-tab-pane key="execution-records" title="执行记录">
           <ExecutionRecordList ref="executionRecordListRef" />
         </a-tab-pane>
+        <a-tab-pane key="batch-records" title="批量执行">
+          <BatchRecordList ref="batchRecordListRef" />
+        </a-tab-pane>
         <a-tab-pane key="public-data" title="公共数据">
           <PublicDataList ref="publicDataListRef" />
         </a-tab-pane>
@@ -36,6 +39,7 @@ import PageList from './PageList.vue'
 import PageStepList from './PageStepList.vue'
 import TestCaseList from './TestCaseList.vue'
 import ExecutionRecordList from './ExecutionRecordList.vue'
+import BatchRecordList from './BatchRecordList.vue'
 import PublicDataList from './PublicDataList.vue'
 import EnvConfigList from './EnvConfigList.vue'
 import ActuatorList from './ActuatorList.vue'
@@ -49,10 +53,11 @@ const pageListRef = ref()
 const pageStepListRef = ref()
 const testCaseListRef = ref()
 const executionRecordListRef = ref()
+const batchRecordListRef = ref()
 const publicDataListRef = ref()
 const envConfigListRef = ref()
 const actuatorListRef = ref()
-void [modulePanelRef, pageListRef, pageStepListRef, testCaseListRef, executionRecordListRef, publicDataListRef, envConfigListRef, actuatorListRef]
+void [modulePanelRef, pageListRef, pageStepListRef, testCaseListRef, executionRecordListRef, batchRecordListRef, publicDataListRef, envConfigListRef, actuatorListRef]
 
 // 页签切换时刷新对应数据
 watch(activeTab, (newTab) => {
@@ -68,6 +73,9 @@ watch(activeTab, (newTab) => {
       break
     case 'execution-records':
       executionRecordListRef.value?.refresh?.()
+      break
+    case 'batch-records':
+      batchRecordListRef.value?.refresh?.()
       break
     case 'public-data':
       publicDataListRef.value?.refresh?.()

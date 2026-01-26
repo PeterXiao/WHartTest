@@ -298,11 +298,70 @@ class UiCaseStepsDetailed(models.Model):
         return f"{self.test_case.name} - {self.page_step.name}"
 
 
+class UiBatchExecutionRecord(models.Model):
+    """批量执行记录"""
+    STATUS_CHOICES = [
+        (0, _('待执行')),
+        (1, _('执行中')),
+        (2, _('全部成功')),
+        (3, _('部分失败')),
+        (4, _('全部失败')),
+    ]
+    TRIGGER_TYPE_CHOICES = [('manual', _('手动执行')), ('scheduled', _('定时执行')), ('api', _('API 触发'))]
+
+    name = models.CharField(_('批次名称'), max_length=255)
+    total_cases = models.IntegerField(_('用例总数'), default=0)
+    passed_cases = models.IntegerField(_('成功数'), default=0)
+    failed_cases = models.IntegerField(_('失败数'), default=0)
+    status = models.SmallIntegerField(_('状态'), choices=STATUS_CHOICES, default=0)
+    trigger_type = models.CharField(_('触发类型'), max_length=20, choices=TRIGGER_TYPE_CHOICES, default='manual')
+    executor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True,
+        related_name='ui_batch_executions', verbose_name=_('执行人')
+    )
+    start_time = models.DateTimeField(_('开始时间'), null=True, blank=True)
+    end_time = models.DateTimeField(_('结束时间'), null=True, blank=True)
+    duration = models.FloatField(_('总时长（秒）'), null=True, blank=True)
+    created_at = models.DateTimeField(_('创建时间'), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _('批量执行记录')
+        verbose_name_plural = _('批量执行记录')
+        ordering = ['-created_at']
+        db_table = 'ui_batch_execution_record'
+
+    def __str__(self):
+        return f"{self.name} ({self.passed_cases}/{self.total_cases})"
+
+    def update_statistics(self):
+        """更新统计信息"""
+        records = self.execution_records.all()
+        self.passed_cases = records.filter(status=2).count()
+        self.failed_cases = records.filter(status=3).count()
+        completed = self.passed_cases + self.failed_cases
+        if completed >= self.total_cases:
+            if self.failed_cases == 0:
+                self.status = 2  # 全部成功
+            elif self.passed_cases == 0:
+                self.status = 4  # 全部失败
+            else:
+                self.status = 3  # 部分失败
+            from django.utils import timezone
+            self.end_time = timezone.now()
+            if self.start_time:
+                self.duration = (self.end_time - self.start_time).total_seconds()
+        self.save()
+
+
 class UiExecutionRecord(models.Model):
     """UI 测试执行记录"""
     STATUS_CHOICES = [(0, _('未执行')), (1, _('执行中')), (2, _('成功')), (3, _('失败')), (4, _('取消'))]
     TRIGGER_TYPE_CHOICES = [('manual', _('手动执行')), ('scheduled', _('定时执行')), ('api', _('API 触发'))]
 
+    batch = models.ForeignKey(
+        UiBatchExecutionRecord, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='execution_records', verbose_name=_('所属批次')
+    )
     test_case = models.ForeignKey(
         UiTestCase, on_delete=models.CASCADE,
         related_name='execution_records', verbose_name=_('所属用例')

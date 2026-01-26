@@ -329,6 +329,7 @@ class PlaywrightExecutor:
                     step_id=step.step_id,
                     status='success' if success else 'failed',
                     message=message,
+                    description=step.description or step.operation_type,
                     duration=duration,
                     element_found=success,
                     screenshot=step_screenshot
@@ -340,6 +341,7 @@ class PlaywrightExecutor:
                 step_id=step.step_id,
                 status='failed',
                 message=str(e),
+                description=step.description or step.operation_type,
                 duration=duration,
                 element_found=False
             )
@@ -382,16 +384,17 @@ class PlaywrightExecutor:
                         try:
                             success, message, step_screenshot = await self._execute_step(page, step)
                             step_duration = time.time() - step_start
-                            
+
                             step_result = StepResultModel(
                                 step_id=step.step_id,
                                 status='success' if success else 'failed',
                                 message=message,
+                                description=step.description or step.operation_type,
                                 duration=step_duration,
                                 element_found=success,
                                 screenshot=step_screenshot  # 保存截图操作的路径
                             )
-                            
+
                             if success:
                                 passed_steps += 1
                                 logger.debug(f"  ✅ {step.description or step.operation_type}")
@@ -403,24 +406,25 @@ class PlaywrightExecutor:
                                     screenshot_path = f"{self.screenshot_dir}/fail_{config.case_id}_{step.step_id}.png"
                                     await page.screenshot(path=screenshot_path)
                                     step_result.screenshot = screenshot_path
-                                
+
                         except Exception as step_error:
                             step_duration = time.time() - step_start
                             failed_steps += 1
                             error_msg = str(step_error)
                             logger.error(f"  ❌ {step.description or step.operation_type}: {error_msg}")
-                            
+
                             # 失败时截图
                             try:
                                 screenshot_path = f"{self.screenshot_dir}/error_{config.case_id}_{step.step_id}.png"
                                 await page.screenshot(path=screenshot_path)
                             except:
                                 screenshot_path = None
-                            
+
                             step_result = StepResultModel(
                                 step_id=step.step_id,
                                 status='failed',
                                 message=error_msg,
+                                description=step.description or step.operation_type,
                                 duration=step_duration,
                                 element_found=False,
                                 screenshot=screenshot_path
@@ -494,17 +498,18 @@ class PlaywrightExecutor:
                     try:
                         success, message, step_screenshot = await self._execute_step(page, step)
                         step_duration = time.time() - step_start
-                        
+
                         step_result = StepResultModel(
                             step_id=step.step_id,
                             status='success' if success else 'failed',
                             message=message,
+                            description=step.description or step.operation_type,
                             duration=step_duration,
                             element_found=success,
                             screenshot=step_screenshot
                         )
                         step_results.append(step_result)
-                        
+
                         if success:
                             logger.debug(f"  ✅ {step.description or step.operation_type}")
                         else:
@@ -515,23 +520,24 @@ class PlaywrightExecutor:
                                 await page.screenshot(path=screenshot_path)
                                 step_result.screenshot = screenshot_path
                             break  # 步骤失败时停止执行后续步骤
-                            
+
                     except Exception as step_error:
                         step_duration = time.time() - step_start
                         error_msg = str(step_error)
                         logger.error(f"  ❌ {step.description or step.operation_type}: {error_msg}")
-                        
+
                         # 失败时截图
                         try:
                             screenshot_path = f"{self.screenshot_dir}/error_ps_{config.page_step_id}_{step.step_id}.png"
                             await page.screenshot(path=screenshot_path)
                         except:
                             screenshot_path = None
-                        
+
                         step_result = StepResultModel(
                             step_id=step.step_id,
                             status='failed',
                             message=error_msg,
+                            description=step.description or step.operation_type,
                             duration=step_duration,
                             element_found=False,
                             screenshot=screenshot_path
@@ -550,5 +556,223 @@ class PlaywrightExecutor:
                     duration=0,
                     element_found=False
                 ))
-        
+
         return step_results
+
+    async def _execute_case_on_context(
+        self,
+        context: BrowserContext,
+        config: TestCaseConfig,
+        trace_enabled: bool = False
+    ) -> CaseResultModel:
+        """在独立上下文中执行用例（用于并发执行）"""
+        start_time = time.time()
+        step_results = []
+        passed_steps = 0
+        failed_steps = 0
+        total_steps = sum(len(ps.steps) for ps in config.page_steps)
+        trace_path = None
+
+        try:
+            # 启动 Trace
+            if trace_enabled:
+                await context.tracing.start(
+                    screenshots=self.trace_screenshots,
+                    snapshots=self.trace_snapshots,
+                    sources=self.trace_sources,
+                )
+
+            page = await context.new_page()
+            page.set_default_timeout(self.action_timeout)
+
+            logger.info(f"[并发] 开始执行用例: {config.case_name}")
+
+            for page_step in config.page_steps:
+                if self._stop_requested:
+                    raise Exception("用例被手动停止")
+
+                # 导航到页面
+                if page_step.page_url:
+                    await page.goto(page_step.page_url)
+                    await page.wait_for_load_state("domcontentloaded")
+
+                # 执行页面内的步骤
+                for step in page_step.steps:
+                    if self._stop_requested:
+                        raise Exception("用例被手动停止")
+
+                    step_start = time.time()
+                    try:
+                        success, message, step_screenshot = await self._execute_step(page, step)
+                        step_duration = time.time() - step_start
+
+                        step_result = StepResultModel(
+                            step_id=step.step_id,
+                            status='success' if success else 'failed',
+                            message=message,
+                            description=step.description or step.operation_type,
+                            duration=step_duration,
+                            element_found=success,
+                            screenshot=step_screenshot
+                        )
+
+                        if success:
+                            passed_steps += 1
+                        else:
+                            failed_steps += 1
+                            if not step_screenshot:
+                                screenshot_path = f"{self.screenshot_dir}/fail_{config.case_id}_{step.step_id}.png"
+                                await page.screenshot(path=screenshot_path)
+                                step_result.screenshot = screenshot_path
+
+                    except Exception as step_error:
+                        step_duration = time.time() - step_start
+                        failed_steps += 1
+                        error_msg = str(step_error)
+
+                        try:
+                            screenshot_path = f"{self.screenshot_dir}/error_{config.case_id}_{step.step_id}.png"
+                            await page.screenshot(path=screenshot_path)
+                        except:
+                            screenshot_path = None
+
+                        step_result = StepResultModel(
+                            step_id=step.step_id,
+                            status='failed',
+                            message=error_msg,
+                            description=step.description or step.operation_type,
+                            duration=step_duration,
+                            element_found=False,
+                            screenshot=screenshot_path
+                        )
+
+                    step_results.append(step_result)
+
+            duration = time.time() - start_time
+            status = 'success' if failed_steps == 0 else 'failed'
+            message = f"用例执行{'成功' if status == 'success' else '失败'}: 通过 {passed_steps}/{total_steps}"
+
+            # 保存 Trace
+            if trace_enabled:
+                trace_path = f"{self.trace_dir}/case_{config.case_id}_{int(time.time())}.zip"
+                await context.tracing.stop(path=trace_path)
+
+            await page.close()
+
+            logger.info(f"[并发] {'✅' if status == 'success' else '❌'} {message}")
+
+            return CaseResultModel(
+                case_id=config.case_id,
+                status=status,
+                message=message,
+                total_steps=total_steps,
+                passed_steps=passed_steps,
+                failed_steps=failed_steps,
+                duration=duration,
+                steps=step_results,
+                trace_path=trace_path
+            )
+
+        except Exception as e:
+            duration = time.time() - start_time
+            error_msg = str(e)
+            logger.error(f"[并发] 用例执行异常: {error_msg}")
+
+            # 尝试保存 Trace
+            if trace_enabled:
+                try:
+                    trace_path = f"{self.trace_dir}/case_{config.case_id}_{int(time.time())}.zip"
+                    await context.tracing.stop(path=trace_path)
+                except:
+                    pass
+
+            return CaseResultModel(
+                case_id=config.case_id,
+                status='failed',
+                message=error_msg,
+                total_steps=total_steps,
+                passed_steps=passed_steps,
+                failed_steps=failed_steps + (total_steps - passed_steps - failed_steps),
+                duration=duration,
+                steps=step_results,
+                trace_path=trace_path
+            )
+
+    async def execute_batch_concurrent(
+        self,
+        configs: list[TestCaseConfig],
+        max_concurrent: int = 3,
+        on_result = None
+    ) -> list[CaseResultModel]:
+        """并发执行多个用例
+
+        Args:
+            configs: 用例配置列表
+            max_concurrent: 最大并发数
+            on_result: 单个用例完成时的回调函数 (可选)
+
+        Returns:
+            用例执行结果列表
+        """
+        if not configs:
+            return []
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        # 确保浏览器已初始化（非持久化模式）
+        if self._playwright is None:
+            self._playwright = await async_playwright().start()
+
+        browser_launcher = getattr(self._playwright, self.browser_type)
+        browser = await browser_launcher.launch(
+            headless=self.headless,
+            timeout=self.launch_timeout,
+        )
+
+        logger.info(f"[并发执行] 开始执行 {len(configs)} 个用例, 最大并发数: {max_concurrent}")
+
+        async def run_with_limit(config: TestCaseConfig):
+            async with semaphore:
+                # 每个用例独立的浏览器上下文
+                context = await browser.new_context()
+                try:
+                    result = await self._execute_case_on_context(
+                        context,
+                        config,
+                        trace_enabled=self.trace_enabled
+                    )
+                    if on_result:
+                        await on_result(result)
+                    return result
+                finally:
+                    await context.close()
+
+        try:
+            # 并发执行所有用例
+            results = await asyncio.gather(
+                *[run_with_limit(c) for c in configs],
+                return_exceptions=True
+            )
+
+            # 处理异常结果
+            final_results = []
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    final_results.append(CaseResultModel(
+                        case_id=configs[i].case_id,
+                        status='failed',
+                        message=str(result),
+                        total_steps=0,
+                        passed_steps=0,
+                        failed_steps=0,
+                        duration=0,
+                        steps=[]
+                    ))
+                else:
+                    final_results.append(result)
+
+            logger.info(f"[并发执行] 完成, 成功: {sum(1 for r in final_results if r.status == 'success')}/{len(final_results)}")
+            return final_results
+
+        finally:
+            await browser.close()

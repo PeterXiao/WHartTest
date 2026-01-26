@@ -383,15 +383,16 @@ class TaskConsumer:
         """执行测试用例"""
         case_id = args.get('case_id')
         env_config_id = args.get('env_config_id')
+        batch_id = args.get('batch_id')
         if not case_id:
             logger.error("缺少case_id参数")
             return
-        
+
         # 从API获取用例详情
         case_data = await self._fetch_test_case(case_id)
         if not case_data:
             return
-        
+
         # 获取环境配置
         env_config = None
         project_id = case_data.get('project')
@@ -401,20 +402,20 @@ class TaskConsumer:
             # 尝试获取项目的默认环境配置
             if project_id:
                 env_config = await self._fetch_default_env_config(project_id)
-        
+
         # 初始化数据处理器，加载项目公共变量
         data_processor = await self._init_data_processor(project_id)
-        
+
         # 构建配置（传入数据处理器进行变量替换）
         config = self._build_test_case_config(case_data, env_config, data_processor)
-        
+
         # 执行
         logger.info(f"开始执行用例: {config.case_name}")
         result = await self.executor.execute_test_case(config)
-        
+
         # 上传截图并替换路径
         result = await self._process_result_screenshots(result)
-        
+
         # 上传 Trace 文件并替换路径
         if result.trace_path:
             server_trace_path = await self._upload_trace_file(result.trace_path)
@@ -422,32 +423,94 @@ class TaskConsumer:
                 result.trace_path = server_trace_path
             else:
                 result.trace_path = None  # 上传失败则清空
-        
-        # 发送用例结果
+
+        # 发送用例结果（包含 batch_id）
+        result_data = result.model_dump()
+        if batch_id:
+            result_data['batch_id'] = batch_id
         await self.ws_client.send_result(
             UiSocketEnum.CASE_RESULT,
-            result.model_dump(),
+            result_data,
             self._current_user
         )
-        
+
         logger.info(f"用例执行完成: {result.status}")
     
     async def execute_batch(self, args: dict):
-        """批量执行用例"""
+        """批量执行用例（支持并发）"""
         case_ids = args.get('case_ids', [])
+        env_config_id = args.get('env_config_id')
+        batch_id = args.get('batch_id')
+        # 从配置获取并发数
+        max_concurrent = getattr(self.config, 'max_concurrent', 3) if self.config else 3
         if not case_ids:
             logger.error("缺少case_ids参数")
             return
-        
-        logger.info(f"开始批量执行 {len(case_ids)} 个用例")
-        
+
+        logger.info(f"开始批量执行 {len(case_ids)} 个用例, 并发数: {max_concurrent}")
+
+        # 预先获取所有用例数据并构建配置
+        configs = []
+        config_batch_map = {}  # case_id -> batch_id 映射
+
         for case_id in case_ids:
             if self._stop_event.is_set():
-                logger.info("批量执行被停止")
-                break
-            
-            await self.execute_test_case({'case_id': case_id})
-        
+                logger.info("批量执行准备阶段被停止")
+                return
+
+            case_data = await self._fetch_test_case(case_id)
+            if not case_data:
+                logger.warning(f"用例 {case_id} 数据获取失败，跳过")
+                continue
+
+            # 获取环境配置
+            env_config = None
+            project_id = case_data.get('project')
+            if env_config_id:
+                env_config = await self._fetch_env_config(env_config_id)
+            elif project_id:
+                env_config = await self._fetch_default_env_config(project_id)
+
+            # 初始化数据处理器
+            data_processor = await self._init_data_processor(project_id)
+
+            # 构建配置
+            config = self._build_test_case_config(case_data, env_config, data_processor)
+            configs.append(config)
+            config_batch_map[config.case_id] = batch_id
+
+        if not configs:
+            logger.warning("没有可执行的用例")
+            return
+
+        # 定义结果回调 - 每个用例完成后立即发送结果
+        async def on_result(result):
+            # 上传截图
+            result = await self._process_result_screenshots(result)
+
+            # 上传 Trace
+            if result.trace_path:
+                server_trace_path = await self._upload_trace_file(result.trace_path)
+                result.trace_path = server_trace_path if server_trace_path else None
+
+            # 发送结果
+            result_data = result.model_dump()
+            if batch_id:
+                result_data['batch_id'] = batch_id
+            await self.ws_client.send_result(
+                UiSocketEnum.CASE_RESULT,
+                result_data,
+                self._current_user
+            )
+            logger.info(f"用例 {result.case_id} 执行完成: {result.status}")
+
+        # 并发执行
+        await self.executor.execute_batch_concurrent(
+            configs,
+            max_concurrent=max_concurrent,
+            on_result=on_result
+        )
+
         logger.info("批量执行完成")
     
     async def stop_execution(self, args: dict):

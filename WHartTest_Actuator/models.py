@@ -53,6 +53,7 @@ class StepResultModel(BaseModel):
     step_id: int
     status: str
     message: str = ''
+    description: str = ''  # 步骤描述/元素名称
     screenshot: Optional[str] = None
     duration: float = 0
     element_found: bool = True

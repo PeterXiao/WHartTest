@@ -9,7 +9,8 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 
 from .models import (
     UiModule, UiPage, UiElement, UiPageSteps, UiPageStepsDetailed,
-    UiTestCase, UiCaseStepsDetailed, UiExecutionRecord, UiPublicData, UiEnvironmentConfig
+    UiTestCase, UiCaseStepsDetailed, UiExecutionRecord, UiPublicData, UiEnvironmentConfig,
+    UiBatchExecutionRecord
 )
 from .serializers import (
     UiModuleSerializer, UiPageSerializer, UiPageDetailSerializer,
@@ -17,7 +18,7 @@ from .serializers import (
     UiPageStepsDetailedSerializer, UiTestCaseSerializer, UiTestCaseDetailSerializer,
     UiCaseStepsDetailedSerializer, UiExecutionRecordSerializer,
     UiPublicDataSerializer, UiEnvironmentConfigSerializer, UiTestCaseExecuteSerializer,
-    UiPageStepsExecuteSerializer
+    UiPageStepsExecuteSerializer, UiBatchExecutionRecordSerializer, UiBatchExecutionRecordDetailSerializer
 )
 
 
@@ -320,12 +321,12 @@ class UiEnvironmentConfigViewSet(viewsets.ModelViewSet):
 class ActuatorViewSet(viewsets.ViewSet):
     """执行器管理视图"""
     permission_classes = []  # 公开访问，不需要特殊权限
-    
+
     @action(detail=False, methods=['get'])
     def list_actuators(self, request):
         """获取所有在线执行器列表"""
         from .consumers import SocketUserManager
-        
+
         actuators = []
         for actuator_id, consumer in SocketUserManager._actuator_users.items():
             actuator_info = getattr(consumer, 'actuator_info', {})
@@ -340,7 +341,7 @@ class ActuatorViewSet(viewsets.ViewSet):
                 'headless': actuator_info.get('headless', False),
                 'connected_at': actuator_info.get('connected_at'),
             })
-        
+
         return Response({
             'status': 'success',
             'data': {
@@ -348,12 +349,12 @@ class ActuatorViewSet(viewsets.ViewSet):
                 'items': actuators
             }
         })
-    
+
     @action(detail=False, methods=['get'])
     def status(self, request):
         """获取执行器状态统计"""
         from .consumers import SocketUserManager
-        
+
         return Response({
             'status': 'success',
             'data': {
@@ -362,6 +363,26 @@ class ActuatorViewSet(viewsets.ViewSet):
                 'web_users': len(SocketUserManager._web_users),
             }
         })
+
+
+class UiBatchExecutionRecordViewSet(viewsets.ModelViewSet):
+    """批量执行记录管理视图"""
+    queryset = UiBatchExecutionRecord.objects.select_related('executor').prefetch_related('execution_records')
+    serializer_class = UiBatchExecutionRecordSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['status', 'trigger_type']
+    ordering_fields = ['created_at', 'duration', 'total_cases']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return UiBatchExecutionRecordDetailSerializer
+        return UiBatchExecutionRecordSerializer
+
+    def perform_destroy(self, instance):
+        """删除批量执行记录及其关联的执行记录"""
+        instance.execution_records.all().delete()
+        instance.delete()
 
 
 # ---------- 截图上传 ----------

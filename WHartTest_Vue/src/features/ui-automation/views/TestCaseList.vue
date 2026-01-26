@@ -62,6 +62,17 @@
             {{ env.name }}{{ env.is_default ? ' (默认)' : '' }}
           </a-option>
         </a-select>
+        <a-button
+          type="primary"
+          status="success"
+          :disabled="selectedRowKeys.length === 0 || executingIds.length > 0"
+          :loading="executingIds.length > 0"
+          style="margin-right: 12px"
+          @click="runBatchTestCases"
+        >
+          <template #icon><icon-thunderbolt /></template>
+          批量执行{{ selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : '' }}
+        </a-button>
         <a-button type="primary" @click="showAddModal">
           <template #icon><icon-plus /></template>
           新增用例
@@ -75,6 +86,9 @@
       :pagination="pagination"
       :loading="loading"
       :scroll="{ x: 1100 }"
+      :row-selection="{ type: 'checkbox', showCheckedAll: true }"
+      v-model:selectedKeys="selectedRowKeys"
+      row-key="id"
       @page-change="onPageChange"
       @page-size-change="onPageSizeChange"
     >
@@ -101,12 +115,12 @@
           <a-button
             type="text"
             size="mini"
-            :loading="executing"
-            :disabled="executing"
+            :loading="isExecuting(record.id)"
+            :disabled="isExecuting(record.id)"
             @click="runTestCase(record)"
           >
             <template #icon><icon-play-arrow /></template>
-            {{ executing ? '执行中' : '执行' }}
+            {{ isExecuting(record.id) ? '执行中' : '执行' }}
           </a-button>
           <a-button type="text" size="mini" @click="editTestCase(record)">
             <template #icon><icon-edit /></template>
@@ -177,7 +191,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch, onUnmounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconOrderedList, IconPlayArrow } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconOrderedList, IconPlayArrow, IconThunderbolt } from '@arco-design/web-vue/es/icon'
 import { useProjectStore } from '@/store/projectStore'
 import { testCaseApi, moduleApi, actuatorApi, envConfigApi, type ActuatorInfo } from '../api'
 import type { UiTestCase, UiTestCaseForm, UiModule, CaseLevel, ExecutionStatus, UiEnvironmentConfig } from '../types'
@@ -194,13 +208,17 @@ const projectId = computed(() => projectStore.currentProject?.id)
 
 const loading = ref(false)
 const submitting = ref(false)
-const executing = ref(false) // 执行中状态
+const executingIds = ref<number[]>([]) // 正在执行的用例ID列表
+
+/** 检查用例是否正在执行 */
+const isExecuting = (caseId: number) => executingIds.value.includes(caseId)
 const testcaseData = ref<UiTestCase[]>([])
 const moduleOptions = ref<UiModule[]>([])
 const envConfigs = ref<UiEnvironmentConfig[]>([]) // 环境配置列表
 const actuators = ref<ActuatorInfo[]>([]) // 执行器列表
 const selectedEnvConfig = ref<number | undefined>() // 选中的环境配置
 const selectedActuator = ref<string | undefined>() // 选中的执行器
+const selectedRowKeys = ref<number[]>([]) // 批量选中的用例ID
 const modalVisible = ref(false)
 const stepsDrawerVisible = ref(false)
 const isEdit = ref(false)
@@ -434,7 +452,7 @@ const runTestCase = async (record: UiTestCase) => {
   }
 
   // 发送执行命令（包含执行器ID）
-  executing.value = true
+  executingIds.value.push(record.id)
   const success = uiWebSocket.runTestCase(record.id, selectedEnvConfig.value, selectedActuator.value)
   if (success) {
     Message.info(`开始执行用例: ${record.name}`)
@@ -445,15 +463,82 @@ const runTestCase = async (record: UiTestCase) => {
     }
   } else {
     Message.error('发送执行命令失败')
-    executing.value = false
+    executingIds.value = executingIds.value.filter(id => id !== record.id)
+  }
+}
+
+/** 批量执行选中的用例 */
+const runBatchTestCases = async () => {
+  if (selectedRowKeys.value.length === 0) {
+    Message.warning('请先选择要执行的用例')
+    return
+  }
+
+  // 先获取执行器列表
+  await fetchActuators()
+
+  // 检查是否有可用执行器
+  if (actuators.value.length === 0 || !actuators.value.some(a => a.is_open)) {
+    Message.warning('没有可用的执行器，请先启动执行器')
+    return
+  }
+
+  // 如果没有选择执行器，自动选择第一个可用的
+  if (!selectedActuator.value) {
+    const available = actuators.value.find(a => a.is_open)
+    if (available) {
+      selectedActuator.value = available.id
+    } else {
+      Message.warning('请选择一个在线的执行器')
+      return
+    }
+  }
+
+  // 如果没有选择环境配置，使用默认的
+  if (!selectedEnvConfig.value && envConfigs.value.length > 0) {
+    const defaultEnv = envConfigs.value.find(e => e.is_default)
+    if (defaultEnv) {
+      selectedEnvConfig.value = defaultEnv.id
+    }
+  }
+
+  // 连接 WebSocket
+  try {
+    await uiWebSocket.connect()
+  } catch {
+    Message.error('WebSocket 连接失败')
+    return
+  }
+
+  // 发送批量执行命令
+  executingIds.value.push(...selectedRowKeys.value)
+  const success = uiWebSocket.runTestCases(selectedRowKeys.value, selectedEnvConfig.value, selectedActuator.value)
+  if (success) {
+    Message.info(`开始批量执行 ${selectedRowKeys.value.length} 个用例`)
+    // 更新选中用例状态为"执行中"
+    for (const caseId of selectedRowKeys.value) {
+      const idx = testcaseData.value.findIndex(tc => tc.id === caseId)
+      if (idx !== -1) {
+        testcaseData.value[idx].status = 1
+      }
+    }
+    // 清空选择
+    selectedRowKeys.value = []
+  } else {
+    Message.error('发送批量执行命令失败')
+    executingIds.value = executingIds.value.filter(id => !selectedRowKeys.value.includes(id))
   }
 }
 
 /** 处理用例执行结果 */
 const handleCaseResult = (data: any) => {
-  executing.value = false
   const result = data.data?.func_args as CaseResultModel
   if (!result) return
+
+  // 从执行中列表移除该用例
+  if (result.case_id) {
+    executingIds.value = executingIds.value.filter(id => id !== result.case_id)
+  }
 
   if (result.status === 'success') {
     Message.success(`用例执行成功: ${result.passed_steps}/${result.total_steps} 步骤通过`)

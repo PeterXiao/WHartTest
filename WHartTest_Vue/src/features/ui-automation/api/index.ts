@@ -15,6 +15,7 @@ import type {
   UiTestCaseDetail,
   UiCaseStepsDetailed,
   UiExecutionRecord,
+  UiBatchExecutionRecord,
   UiPublicData,
   UiEnvironmentConfig,
   UiModuleForm,
@@ -161,6 +162,16 @@ export const executionRecordApi = {
   /** 获取执行记录的 Trace 数据 */
   getTrace: (id: number, refresh?: boolean) =>
     request.get<TraceData>(`${BASE_URL}/execution-records/${id}/trace/`, { params: refresh ? { refresh: '1' } : {} }),
+}
+
+// ==================== 批量执行记录管理 ====================
+export const batchRecordApi = {
+  list: (params?: { status?: number; trigger_type?: string }) =>
+    request.get<PaginatedResponse<UiBatchExecutionRecord>>(`${BASE_URL}/batch-records/`, { params }),
+
+  get: (id: number) => request.get<UiBatchExecutionRecord>(`${BASE_URL}/batch-records/${id}/`),
+
+  delete: (id: number) => request.delete(`${BASE_URL}/batch-records/${id}/`),
 }
 
 // ==================== 公共数据管理 ====================

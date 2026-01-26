@@ -121,7 +121,7 @@
             <a-collapse-item v-for="(step, idx) in currentRecord.step_results" :key="idx">
               <template #header>
                 <div class="step-header">
-                  <span>步骤 {{ idx + 1 }}</span>
+                  <span>步骤 {{ idx + 1 }}<template v-if="getStepDescription(step)">: {{ getStepDescription(step) }}</template></span>
                   <a-tag :color="getStepStatusColor(step)" size="small" style="margin-left: 8px">
                     {{ getStepStatusText(step) }}
                   </a-tag>
@@ -236,6 +236,7 @@ const formatTime = (time: string) => {
 type StepResult = Record<string, unknown>
 
 const getStepStatus = (step: unknown) => ((step as StepResult)?.status as string) ?? 'unknown'
+const getStepDescription = (step: unknown) => ((step as StepResult)?.description as string) ?? ''
 const getStepStatusText = (step: unknown) => {
   const status = getStepStatus(step)
   const map: Record<string, string> = { passed: '通过', failed: '失败', skipped: '跳过' }

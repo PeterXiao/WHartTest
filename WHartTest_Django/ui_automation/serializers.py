@@ -4,7 +4,8 @@
 from rest_framework import serializers
 from .models import (
     UiModule, UiPage, UiElement, UiPageSteps, UiPageStepsDetailed,
-    UiTestCase, UiCaseStepsDetailed, UiExecutionRecord, UiPublicData, UiEnvironmentConfig
+    UiTestCase, UiCaseStepsDetailed, UiExecutionRecord, UiPublicData, UiEnvironmentConfig,
+    UiBatchExecutionRecord
 )
 
 
@@ -192,3 +193,27 @@ class UiEnvironmentConfigSerializer(serializers.ModelSerializer):
         model = UiEnvironmentConfig
         fields = '__all__'
         read_only_fields = ['creator', 'created_at', 'updated_at']
+
+
+class UiBatchExecutionRecordSerializer(serializers.ModelSerializer):
+    """批量执行记录序列化器"""
+    executor_name = serializers.CharField(source='executor.username', read_only=True)
+    success_rate = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UiBatchExecutionRecord
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+    def get_success_rate(self, obj):
+        if obj.total_cases == 0:
+            return 0
+        return round(obj.passed_cases / obj.total_cases * 100, 1)
+
+
+class UiBatchExecutionRecordDetailSerializer(UiBatchExecutionRecordSerializer):
+    """批量执行记录详情序列化器（含关联执行记录）"""
+    execution_records = UiExecutionRecordSerializer(many=True, read_only=True)
+
+    class Meta(UiBatchExecutionRecordSerializer.Meta):
+        fields = '__all__'

@@ -253,11 +253,15 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
     
     async def handle_execute_test_case(self, args: dict, user: str):
         """处理执行测试用例请求"""
-        actuator = SocketUserManager.get_actuator()
+        actuator_id = args.get('actuator_id')
+        if actuator_id:
+            actuator = SocketUserManager.get_actuator_by_id(actuator_id)
+        else:
+            actuator = SocketUserManager.get_actuator()
         if not actuator:
             await self.send_json(SocketDataModel(
                 code=ResponseCode.ERROR,
-                msg="没有可用的执行器，请先启动执行器服务"
+                msg="没有可用的执行器，请先启动执行器服务" if not actuator_id else f"执行器 {actuator_id} 不在线"
             ))
             return
         
@@ -285,14 +289,38 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
     
     async def handle_execute_batch(self, args: dict, user: str):
         """处理批量执行请求"""
-        actuator = SocketUserManager.get_actuator()
+        actuator_id = args.get('actuator_id')
+        if actuator_id:
+            actuator = SocketUserManager.get_actuator_by_id(actuator_id)
+        else:
+            actuator = SocketUserManager.get_actuator()
         if not actuator:
             await self.send_json(SocketDataModel(
                 code=ResponseCode.ERROR,
-                msg="没有可用的执行器，请先启动执行器服务"
+                msg="没有可用的执行器，请先启动执行器服务" if not actuator_id else f"执行器 {actuator_id} 不在线"
             ))
             return
-        
+
+        case_ids = args.get('case_ids', [])
+        if not case_ids:
+            await self.send_json(SocketDataModel(
+                code=ResponseCode.ERROR,
+                msg="没有选择要执行的用例"
+            ))
+            return
+
+        # 创建批量执行记录
+        batch_id = await self.create_batch_record(case_ids)
+        if not batch_id:
+            await self.send_json(SocketDataModel(
+                code=ResponseCode.ERROR,
+                msg="创建批量执行记录失败"
+            ))
+            return
+
+        # 将 batch_id 加入参数传递给执行器
+        args['batch_id'] = batch_id
+
         # 转发给执行器，使用服务端分配的user_id而非客户端传入的user
         await actuator.send_json(SocketDataModel(
             code=ResponseCode.SUCCESS,
@@ -304,10 +332,14 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
                 func_args=args
             )
         ))
-        
+
         await self.send_json(SocketDataModel(
             code=ResponseCode.SUCCESS,
-            msg="批量任务已发送给执行器"
+            msg="批量任务已发送给执行器",
+            data=QueueModel(
+                func_name='batch_created',
+                func_args={'batch_id': batch_id, 'total_cases': len(case_ids)}
+            )
         ))
     
     async def handle_stop_execution(self, args: dict, user: str):
@@ -446,47 +478,51 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
     @sync_to_async
     def save_execution_result(self, args: dict):
         """保存执行结果到数据库"""
-        from .models import UiExecutionRecord, UiTestCase
+        from .models import UiExecutionRecord, UiTestCase, UiBatchExecutionRecord
         from datetime import datetime, timedelta
-        
+
         logger.info(f">>> save_execution_result 被调用, args: {args}")
-        
+
         # 状态映射: string -> int
         status_map = {'success': 2, 'failed': 3, 'skipped': 4}
         status_str = args.get('status', 'unknown')
         status = status_map.get(status_str, 3)  # 默认失败
-        
+
         duration = args.get('duration', 0)
         end_time = datetime.now()
         start_time = end_time - timedelta(seconds=duration) if duration else end_time
-        
+
         # 提取步骤结果
         steps = args.get('steps', [])
         screenshots = []
         for step in steps:
             if step.get('screenshot'):
                 screenshots.append(step['screenshot'])
-        
+
         # 提取 trace 路径
         trace_path = args.get('trace_path')
-        
+
+        # 提取 batch_id
+        batch_id = args.get('batch_id')
+
         case_id = args.get('case_id')
         try:
             record = UiExecutionRecord.objects.create(
                 test_case_id=case_id,
+                batch_id=batch_id,
                 status=status,
                 trigger_type='manual',
                 step_results=steps,
                 screenshots=screenshots,
-                trace_path=trace_path,  # 保存 trace 文件路径
+                trace_path=trace_path,
                 log=args.get('message', ''),
                 error_message=args.get('message') if status == 3 else None,
                 start_time=start_time,
                 end_time=end_time,
                 duration=duration
             )
-            logger.info(f"执行记录已保存: id={record.id}, case_id={case_id}, status={status}, trace={trace_path}")
-            
+            logger.info(f"执行记录已保存: id={record.id}, case_id={case_id}, batch_id={batch_id}, status={status}")
+
             # 同时更新测试用例的状态
             if case_id:
                 UiTestCase.objects.filter(id=case_id).update(
@@ -495,8 +531,42 @@ class UiAutomationConsumer(AsyncWebsocketConsumer):
                     error_message=args.get('message') if status == 3 else None
                 )
                 logger.info(f"测试用例状态已更新: case_id={case_id}, status={status}")
+
+            # 更新批量执行记录统计
+            if batch_id:
+                try:
+                    batch = UiBatchExecutionRecord.objects.get(id=batch_id)
+                    batch.update_statistics()
+                    logger.info(f"批量执行记录统计已更新: batch_id={batch_id}")
+                except UiBatchExecutionRecord.DoesNotExist:
+                    logger.warning(f"批量执行记录不存在: batch_id={batch_id}")
         except Exception as e:
             logger.error(f"保存执行结果失败: {e}", exc_info=True)
+
+    @sync_to_async
+    def create_batch_record(self, case_ids: list) -> int:
+        """创建批量执行记录"""
+        from .models import UiBatchExecutionRecord, UiTestCase
+        from django.utils import timezone
+
+        try:
+            # 获取用例名称用于批次命名
+            case_names = list(UiTestCase.objects.filter(id__in=case_ids).values_list('name', flat=True)[:3])
+            batch_name = f"批量执行: {', '.join(case_names)}"
+            if len(case_ids) > 3:
+                batch_name += f" 等{len(case_ids)}个用例"
+
+            batch = UiBatchExecutionRecord.objects.create(
+                name=batch_name,
+                total_cases=len(case_ids),
+                status=1,  # 执行中
+                start_time=timezone.now()
+            )
+            logger.info(f"批量执行记录已创建: id={batch.id}, total={len(case_ids)}")
+            return batch.id
+        except Exception as e:
+            logger.error(f"创建批量执行记录失败: {e}", exc_info=True)
+            return None
     
     async def handle_set_actuator_info(self, args: dict, user: str):
         """处理执行器信息更新（仅执行器可调用）"""

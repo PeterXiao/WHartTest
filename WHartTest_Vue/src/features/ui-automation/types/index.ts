@@ -184,6 +184,7 @@ export type TriggerType = 'manual' | 'scheduled' | 'api'
 /** 执行记录 */
 export interface UiExecutionRecord {
   id: number
+  batch?: number
   test_case: number
   test_case_name?: string
   executor: number | null
@@ -202,6 +203,36 @@ export interface UiExecutionRecord {
   end_time?: string
   duration?: number
   created_at: string
+}
+
+/** 批量执行记录状态 */
+export type BatchExecutionStatus = 0 | 1 | 2 | 3 | 4  // 待执行 | 执行中 | 全部成功 | 部分失败 | 全部失败
+
+export const BATCH_STATUS_LABELS: Record<BatchExecutionStatus, string> = {
+  0: '待执行',
+  1: '执行中',
+  2: '全部成功',
+  3: '部分失败',
+  4: '全部失败',
+}
+
+/** 批量执行记录 */
+export interface UiBatchExecutionRecord {
+  id: number
+  name: string
+  total_cases: number
+  passed_cases: number
+  failed_cases: number
+  status: BatchExecutionStatus
+  trigger_type: TriggerType
+  executor?: number
+  executor_name?: string
+  start_time?: string
+  end_time?: string
+  duration?: number
+  created_at: string
+  success_rate?: number
+  execution_records?: UiExecutionRecord[]
 }
 
 /** Trace 操作记录 */

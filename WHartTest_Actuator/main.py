@@ -62,6 +62,7 @@ class Config:
         self.retry_count = 3
         self.step_interval = 500
         self.screenshot_dir = "./data/screenshots"
+        self.max_concurrent = 3  # 批量执行最大并发数
         
         # Trace 配置
         self.trace_enabled = True
@@ -117,6 +118,7 @@ class Config:
             self.retry_count = execution.get('retry_count', self.retry_count)
             self.step_interval = execution.get('step_interval', self.step_interval)
             self.screenshot_dir = execution.get('screenshot_dir', self.screenshot_dir)
+            self.max_concurrent = execution.get('max_concurrent', self.max_concurrent)
         
         # Trace 配置
         if 'trace' in data:
@@ -243,6 +245,27 @@ async def main():
         config.api_url = login_result['api_url']
         config.api_username = login_result['username']
         config.api_password = login_result['password']
+        # 更新执行器名称
+        if login_result.get('actuator_name'):
+            config.actuator_name = login_result['actuator_name']
+        # 更新浏览器配置
+        config.browser_type = login_result.get('browser_type', config.browser_type)
+        config.headless = login_result.get('headless', config.headless)
+        config.persistent = login_result.get('persistent', config.persistent)
+        config.launch_timeout = login_result.get('launch_timeout', config.launch_timeout)
+        config.action_timeout = login_result.get('action_timeout', config.action_timeout)
+        # 更新执行配置
+        config.retry_count = login_result.get('retry_count', config.retry_count)
+        config.step_interval = login_result.get('step_interval', config.step_interval)
+        config.max_concurrent = login_result.get('max_concurrent', config.max_concurrent)
+        # 更新 Trace 配置
+        config.trace_enabled = login_result.get('trace_enabled', config.trace_enabled)
+        config.trace_screenshots = login_result.get('trace_screenshots', config.trace_screenshots)
+        config.trace_snapshots = login_result.get('trace_snapshots', config.trace_snapshots)
+        config.trace_sources = login_result.get('trace_sources', config.trace_sources)
+        # 更新日志配置
+        config.log_level = login_result.get('log_level', config.log_level)
+        
         logger.info(f"登录成功: {config.api_username} @ {config.api_url}")
     
     # 生成执行器ID

@@ -6,6 +6,7 @@ GUI 登录窗口模块
 - 服务器地址配置
 - 登录验证
 - 配置记忆
+- 执行器设置（浏览器类型、无头模式等）
 """
 
 import asyncio
@@ -16,6 +17,8 @@ from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -24,6 +27,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -118,7 +124,7 @@ class LoginWindow(QDialog):
     def _init_ui(self):
         """初始化界面 - 左右分栏设计"""
         self.setWindowTitle("WHartTest 执行器登录")
-        self.setFixedSize(900, 560)
+        self.setFixedSize(920, 640)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
         self.setStyleSheet("background-color: #f0f2f5;")
 
@@ -276,32 +282,41 @@ class LoginWindow(QDialog):
         form_card.setGraphicsEffect(shadow)
 
         form_layout = QVBoxLayout(form_card)
-        form_layout.setContentsMargins(40, 36, 40, 36)
+        form_layout.setContentsMargins(32, 24, 32, 24)
         form_layout.setSpacing(0)
 
-        # 表单标题
-        form_title = QLabel("执行器登录")
-        form_title.setStyleSheet("""
-            font-size: 24px;
-            font-weight: bold;
-            color: #1a1a1a;
-            background: transparent;
+        # 选项卡
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: none;
+                background: transparent;
+            }
+            QTabBar::tab {
+                background: transparent;
+                border: none;
+                padding: 10px 24px;
+                font-size: 15px;
+                color: #666;
+                border-bottom: 2px solid transparent;
+            }
+            QTabBar::tab:selected {
+                color: #1976D2;
+                border-bottom: 2px solid #1976D2;
+                font-weight: 500;
+            }
+            QTabBar::tab:hover {
+                color: #1976D2;
+            }
         """)
-        form_title.setAlignment(Qt.AlignCenter)
-        form_layout.addWidget(form_title)
-        form_layout.addSpacing(6)
 
-        form_subtitle = QLabel("请输入您的账号信息")
-        form_subtitle.setStyleSheet("""
-            font-size: 14px;
-            color: #666;
-            background: transparent;
-        """)
-        form_subtitle.setAlignment(Qt.AlignCenter)
-        form_layout.addWidget(form_subtitle)
-        form_layout.addSpacing(28)
+        # ========== 登录选项卡 ==========
+        login_tab = QWidget()
+        login_tab_layout = QVBoxLayout(login_tab)
+        login_tab_layout.setContentsMargins(8, 20, 8, 8)
+        login_tab_layout.setSpacing(0)
 
-        # 输入框样式 - 无图标，简洁设计
+        # 输入框样式
         input_style = """
             QLineEdit {
                 border: 1px solid #e0e0e0;
@@ -325,18 +340,18 @@ class LoginWindow(QDialog):
         self.api_url_input.setPlaceholderText("服务器地址")
         self.api_url_input.setFixedHeight(50)
         self.api_url_input.setStyleSheet(input_style)
-        form_layout.addWidget(self.api_url_input)
-        form_layout.addSpacing(14)
+        login_tab_layout.addWidget(self.api_url_input)
+        login_tab_layout.addSpacing(14)
 
         # 用户名
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText("请输入用户名")
         self.username_input.setFixedHeight(50)
         self.username_input.setStyleSheet(input_style)
-        form_layout.addWidget(self.username_input)
-        form_layout.addSpacing(14)
+        login_tab_layout.addWidget(self.username_input)
+        login_tab_layout.addSpacing(14)
 
-        # 密码样式 - 右侧预留切换按钮空间
+        # 密码样式
         password_style = """
             QLineEdit {
                 border: 1px solid #e0e0e0;
@@ -360,16 +375,16 @@ class LoginWindow(QDialog):
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setStyleSheet(password_style)
         self._add_password_toggle(self.password_input)
-        form_layout.addWidget(self.password_input)
-        form_layout.addSpacing(16)
+        login_tab_layout.addWidget(self.password_input)
+        login_tab_layout.addSpacing(16)
 
         # 状态标签
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet("color: #666; background: transparent; font-size: 13px;")
         self.status_label.setFixedHeight(16)
-        form_layout.addWidget(self.status_label)
-        form_layout.addSpacing(8)
+        login_tab_layout.addWidget(self.status_label)
+        login_tab_layout.addSpacing(8)
 
         # 登录按钮
         self.login_btn = QPushButton("登录")
@@ -398,7 +413,293 @@ class LoginWindow(QDialog):
             }
         """)
         self.login_btn.clicked.connect(self._on_login_clicked)
-        form_layout.addWidget(self.login_btn)
+        login_tab_layout.addWidget(self.login_btn)
+        login_tab_layout.addStretch()
+
+        self.tab_widget.addTab(login_tab, "登录")
+
+        # ========== 设置选项卡 ==========
+        settings_tab = QWidget()
+        settings_tab_layout = QVBoxLayout(settings_tab)
+        settings_tab_layout.setContentsMargins(8, 20, 8, 8)
+        settings_tab_layout.setSpacing(12)
+
+        # 设置项样式
+        label_style = "font-size: 13px; color: #666; background: transparent;"
+        combo_style = """
+            QComboBox {
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+                background-color: #fafafa;
+                color: #333;
+            }
+            QComboBox:focus {
+                border-color: #1976D2;
+                background-color: white;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 24px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid #666;
+                margin-right: 8px;
+            }
+        """
+        checkbox_style = """
+            QCheckBox {
+                font-size: 14px;
+                color: #333;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                border: 1px solid #d0d0d0;
+                background: #fafafa;
+            }
+            QCheckBox::indicator:checked {
+                background: #1976D2;
+                border-color: #1976D2;
+            }
+        """
+        spinbox_style = """
+            QSpinBox {
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+                background-color: #fafafa;
+                color: #333;
+            }
+            QSpinBox:focus {
+                border-color: #1976D2;
+                background-color: white;
+            }
+        """
+
+        # 滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                width: 8px;
+                background: transparent;
+            }
+            QScrollBar::handle:vertical {
+                background: #d0d0d0;
+                border-radius: 4px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+        """)
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 8, 0)
+        scroll_layout.setSpacing(10)
+
+        # 输入框样式（用于设置页）
+        settings_input_style = """
+            QLineEdit {
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+                background-color: #fafafa;
+                color: #333;
+            }
+            QLineEdit:focus {
+                border-color: #1976D2;
+                background-color: white;
+            }
+            QLineEdit::placeholder {
+                color: #bbb;
+            }
+        """
+
+        # ===== 执行器设置 =====
+        actuator_section = QLabel("执行器设置")
+        actuator_section.setStyleSheet("font-size: 14px; font-weight: 500; color: #333; background: transparent;")
+        scroll_layout.addWidget(actuator_section)
+
+        # 执行器名称
+        actuator_name_label = QLabel("执行器名称（留空则自动生成）")
+        actuator_name_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(actuator_name_label)
+
+        self.actuator_name_input = QLineEdit()
+        self.actuator_name_input.setPlaceholderText("例如: my-actuator")
+        self.actuator_name_input.setStyleSheet(settings_input_style)
+        self.actuator_name_input.setFixedHeight(40)
+        scroll_layout.addWidget(self.actuator_name_input)
+
+        scroll_layout.addSpacing(8)
+
+        # ===== 浏览器设置 =====
+        browser_section = QLabel("浏览器设置")
+        browser_section.setStyleSheet("font-size: 14px; font-weight: 500; color: #333; background: transparent;")
+        scroll_layout.addWidget(browser_section)
+
+        # 浏览器类型
+        browser_label = QLabel("浏览器类型")
+        browser_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(browser_label)
+
+        self.browser_type_combo = QComboBox()
+        self.browser_type_combo.addItems(["chromium", "firefox", "webkit"])
+        self.browser_type_combo.setStyleSheet(combo_style)
+        self.browser_type_combo.setFixedHeight(40)
+        scroll_layout.addWidget(self.browser_type_combo)
+
+        # 无头模式
+        self.headless_checkbox = QCheckBox("无头模式（后台运行，无界面）")
+        self.headless_checkbox.setStyleSheet(checkbox_style)
+        scroll_layout.addWidget(self.headless_checkbox)
+
+        # 持久化浏览器
+        self.persistent_checkbox = QCheckBox("持久化浏览器上下文")
+        self.persistent_checkbox.setStyleSheet(checkbox_style)
+        self.persistent_checkbox.setChecked(True)
+        scroll_layout.addWidget(self.persistent_checkbox)
+
+        # 启动超时
+        timeout_label = QLabel("启动超时（秒）")
+        timeout_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(timeout_label)
+
+        self.launch_timeout_spin = QSpinBox()
+        self.launch_timeout_spin.setRange(10, 120)
+        self.launch_timeout_spin.setValue(30)
+        self.launch_timeout_spin.setStyleSheet(spinbox_style)
+        self.launch_timeout_spin.setFixedHeight(40)
+        scroll_layout.addWidget(self.launch_timeout_spin)
+
+        # 操作超时
+        action_timeout_label = QLabel("操作超时（秒）")
+        action_timeout_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(action_timeout_label)
+
+        self.action_timeout_spin = QSpinBox()
+        self.action_timeout_spin.setRange(5, 60)
+        self.action_timeout_spin.setValue(30)
+        self.action_timeout_spin.setStyleSheet(spinbox_style)
+        self.action_timeout_spin.setFixedHeight(40)
+        scroll_layout.addWidget(self.action_timeout_spin)
+
+        scroll_layout.addSpacing(8)
+
+        # ===== 执行设置 =====
+        exec_section = QLabel("执行设置")
+        exec_section.setStyleSheet("font-size: 14px; font-weight: 500; color: #333; background: transparent;")
+        scroll_layout.addWidget(exec_section)
+
+        # 失败重试次数
+        retry_label = QLabel("失败重试次数")
+        retry_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(retry_label)
+
+        self.retry_count_spin = QSpinBox()
+        self.retry_count_spin.setRange(0, 10)
+        self.retry_count_spin.setValue(3)
+        self.retry_count_spin.setStyleSheet(spinbox_style)
+        self.retry_count_spin.setFixedHeight(40)
+        scroll_layout.addWidget(self.retry_count_spin)
+
+        # 步骤间隔时间
+        step_interval_label = QLabel("步骤间隔（毫秒）")
+        step_interval_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(step_interval_label)
+
+        self.step_interval_spin = QSpinBox()
+        self.step_interval_spin.setRange(0, 5000)
+        self.step_interval_spin.setValue(500)
+        self.step_interval_spin.setSingleStep(100)
+        self.step_interval_spin.setStyleSheet(spinbox_style)
+        self.step_interval_spin.setFixedHeight(40)
+        scroll_layout.addWidget(self.step_interval_spin)
+
+        # 批量执行最大并发数
+        max_concurrent_label = QLabel("批量执行并发数")
+        max_concurrent_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(max_concurrent_label)
+
+        self.max_concurrent_spin = QSpinBox()
+        self.max_concurrent_spin.setRange(1, 10)
+        self.max_concurrent_spin.setValue(3)
+        self.max_concurrent_spin.setStyleSheet(spinbox_style)
+        self.max_concurrent_spin.setFixedHeight(40)
+        scroll_layout.addWidget(self.max_concurrent_spin)
+
+        scroll_layout.addSpacing(8)
+
+        # ===== Trace 设置 =====
+        trace_section = QLabel("Trace 设置")
+        trace_section.setStyleSheet("font-size: 14px; font-weight: 500; color: #333; background: transparent;")
+        scroll_layout.addWidget(trace_section)
+
+        # Trace 开关
+        self.trace_checkbox = QCheckBox("启用 Trace 录制")
+        self.trace_checkbox.setStyleSheet(checkbox_style)
+        self.trace_checkbox.setChecked(True)
+        scroll_layout.addWidget(self.trace_checkbox)
+
+        # Trace 截图
+        self.trace_screenshots_checkbox = QCheckBox("记录截图")
+        self.trace_screenshots_checkbox.setStyleSheet(checkbox_style)
+        self.trace_screenshots_checkbox.setChecked(True)
+        scroll_layout.addWidget(self.trace_screenshots_checkbox)
+
+        # Trace 快照
+        self.trace_snapshots_checkbox = QCheckBox("记录 DOM 快照")
+        self.trace_snapshots_checkbox.setStyleSheet(checkbox_style)
+        self.trace_snapshots_checkbox.setChecked(True)
+        scroll_layout.addWidget(self.trace_snapshots_checkbox)
+
+        # Trace 源代码
+        self.trace_sources_checkbox = QCheckBox("记录源代码")
+        self.trace_sources_checkbox.setStyleSheet(checkbox_style)
+        self.trace_sources_checkbox.setChecked(False)
+        scroll_layout.addWidget(self.trace_sources_checkbox)
+
+        scroll_layout.addSpacing(8)
+
+        # ===== 日志设置 =====
+        log_section = QLabel("日志设置")
+        log_section.setStyleSheet("font-size: 14px; font-weight: 500; color: #333; background: transparent;")
+        scroll_layout.addWidget(log_section)
+
+        # 日志级别
+        log_level_label = QLabel("日志级别")
+        log_level_label.setStyleSheet(label_style)
+        scroll_layout.addWidget(log_level_label)
+
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
+        self.log_level_combo.setCurrentText("INFO")
+        self.log_level_combo.setStyleSheet(combo_style)
+        self.log_level_combo.setFixedHeight(40)
+        scroll_layout.addWidget(self.log_level_combo)
+
+        scroll_layout.addStretch()
+
+        scroll_area.setWidget(scroll_content)
+        settings_tab_layout.addWidget(scroll_area)
+
+        self.tab_widget.addTab(settings_tab, "设置")
+
+        form_layout.addWidget(self.tab_widget)
 
         right_layout.addWidget(form_card)
         right_layout.addStretch(1)
@@ -492,11 +793,46 @@ class LoginWindow(QDialog):
         toggle_btn.clicked.connect(toggle_visibility)
     
     def _load_saved_credentials(self):
-        """加载保存的凭证"""
+        """加载保存的凭证和设置"""
         server = self._config.get('server', {})
         self.api_url_input.setText(server.get('api_url', 'http://localhost:8000'))
         self.username_input.setText(server.get('api_username', ''))
         self.password_input.setText(server.get('api_password', ''))
+        
+        # 加载执行器设置
+        actuator = self._config.get('actuator', {})
+        self.actuator_name_input.setText(actuator.get('name', ''))
+        
+        # 加载浏览器设置
+        browser = self._config.get('browser', {})
+        browser_type = browser.get('browser_type', 'chromium')
+        index = self.browser_type_combo.findText(browser_type)
+        if index >= 0:
+            self.browser_type_combo.setCurrentIndex(index)
+        self.headless_checkbox.setChecked(browser.get('headless', False))
+        self.persistent_checkbox.setChecked(browser.get('persistent', True))
+        self.launch_timeout_spin.setValue(browser.get('launch_timeout', 30))
+        self.action_timeout_spin.setValue(browser.get('action_timeout', 30))
+        
+        # 加载执行设置
+        execution = self._config.get('execution', {})
+        self.retry_count_spin.setValue(execution.get('retry_count', 3))
+        self.step_interval_spin.setValue(execution.get('step_interval', 500))
+        self.max_concurrent_spin.setValue(execution.get('max_concurrent', 3))
+        
+        # 加载 Trace 设置
+        trace = self._config.get('trace', {})
+        self.trace_checkbox.setChecked(trace.get('enabled', True))
+        self.trace_screenshots_checkbox.setChecked(trace.get('screenshots', True))
+        self.trace_snapshots_checkbox.setChecked(trace.get('snapshots', True))
+        self.trace_sources_checkbox.setChecked(trace.get('sources', False))
+        
+        # 加载日志设置
+        logging_cfg = self._config.get('logging', {})
+        log_level = logging_cfg.get('level', 'INFO')
+        index = self.log_level_combo.findText(log_level)
+        if index >= 0:
+            self.log_level_combo.setCurrentIndex(index)
     
     def _on_login_clicked(self):
         """登录按钮点击处理"""
@@ -529,12 +865,51 @@ class LoginWindow(QDialog):
         self._access_token = access_token
         self._refresh_token = refresh_token
         
-        # 更新配置
+        # 更新服务器配置
         if 'server' not in self._config:
             self._config['server'] = {}
         self._config['server']['api_url'] = self.api_url_input.text().strip()
         self._config['server']['api_username'] = self.username_input.text().strip()
         self._config['server']['api_password'] = self.password_input.text()
+        
+        # 更新执行器配置
+        if 'actuator' not in self._config:
+            self._config['actuator'] = {}
+        actuator_name = self.actuator_name_input.text().strip()
+        if actuator_name:
+            self._config['actuator']['name'] = actuator_name
+        elif 'name' in self._config['actuator']:
+            del self._config['actuator']['name']
+        
+        # 更新浏览器配置
+        if 'browser' not in self._config:
+            self._config['browser'] = {}
+        self._config['browser']['browser_type'] = self.browser_type_combo.currentText()
+        self._config['browser']['headless'] = self.headless_checkbox.isChecked()
+        self._config['browser']['persistent'] = self.persistent_checkbox.isChecked()
+        self._config['browser']['launch_timeout'] = self.launch_timeout_spin.value()
+        self._config['browser']['action_timeout'] = self.action_timeout_spin.value()
+        
+        # 更新执行配置
+        if 'execution' not in self._config:
+            self._config['execution'] = {}
+        self._config['execution']['retry_count'] = self.retry_count_spin.value()
+        self._config['execution']['step_interval'] = self.step_interval_spin.value()
+        self._config['execution']['max_concurrent'] = self.max_concurrent_spin.value()
+        
+        # 更新 Trace 配置
+        if 'trace' not in self._config:
+            self._config['trace'] = {}
+        self._config['trace']['enabled'] = self.trace_checkbox.isChecked()
+        self._config['trace']['screenshots'] = self.trace_screenshots_checkbox.isChecked()
+        self._config['trace']['snapshots'] = self.trace_snapshots_checkbox.isChecked()
+        self._config['trace']['sources'] = self.trace_sources_checkbox.isChecked()
+        
+        # 更新日志配置
+        if 'logging' not in self._config:
+            self._config['logging'] = {}
+        self._config['logging']['level'] = self.log_level_combo.currentText()
+        
         self._save_config()
         
         self.status_label.setText("登录成功！")
@@ -576,6 +951,11 @@ class LoginWindow(QDialog):
         return self.api_url_input.text().strip()
     
     @property
+    def actuator_name(self) -> str:
+        """获取执行器名称"""
+        return self.actuator_name_input.text().strip()
+    
+    @property
     def username(self) -> str:
         """获取用户名"""
         return self.username_input.text().strip()
@@ -584,6 +964,71 @@ class LoginWindow(QDialog):
     def password(self) -> str:
         """获取密码"""
         return self.password_input.text()
+    
+    @property
+    def browser_type(self) -> str:
+        """获取浏览器类型"""
+        return self.browser_type_combo.currentText()
+    
+    @property
+    def headless(self) -> bool:
+        """获取无头模式设置"""
+        return self.headless_checkbox.isChecked()
+    
+    @property
+    def persistent(self) -> bool:
+        """获取持久化浏览器设置"""
+        return self.persistent_checkbox.isChecked()
+    
+    @property
+    def trace_enabled(self) -> bool:
+        """获取 Trace 启用设置"""
+        return self.trace_checkbox.isChecked()
+    
+    @property
+    def trace_screenshots(self) -> bool:
+        """获取 Trace 截图设置"""
+        return self.trace_screenshots_checkbox.isChecked()
+    
+    @property
+    def trace_snapshots(self) -> bool:
+        """获取 Trace 快照设置"""
+        return self.trace_snapshots_checkbox.isChecked()
+    
+    @property
+    def trace_sources(self) -> bool:
+        """获取 Trace 源代码设置"""
+        return self.trace_sources_checkbox.isChecked()
+    
+    @property
+    def launch_timeout(self) -> int:
+        """获取启动超时设置"""
+        return self.launch_timeout_spin.value()
+    
+    @property
+    def action_timeout(self) -> int:
+        """获取操作超时设置"""
+        return self.action_timeout_spin.value()
+    
+    @property
+    def retry_count(self) -> int:
+        """获取失败重试次数"""
+        return self.retry_count_spin.value()
+    
+    @property
+    def step_interval(self) -> int:
+        """获取步骤间隔（毫秒）"""
+        return self.step_interval_spin.value()
+    
+    @property
+    def max_concurrent(self) -> int:
+        """获取批量执行最大并发数"""
+        return self.max_concurrent_spin.value()
+    
+    @property
+    def log_level(self) -> str:
+        """获取日志级别"""
+        return self.log_level_combo.currentText()
 
 
 def show_login_dialog(config_path: str = "config.toml") -> Optional[dict]:
@@ -591,7 +1036,7 @@ def show_login_dialog(config_path: str = "config.toml") -> Optional[dict]:
     显示登录对话框
     
     Returns:
-        成功返回 {'access_token', 'api_url', 'username', 'password'}
+        成功返回包含登录信息和配置的字典
         取消或失败返回 None
     """
     app = QApplication.instance()
@@ -606,8 +1051,22 @@ def show_login_dialog(config_path: str = "config.toml") -> Optional[dict]:
             'access_token': login_window.access_token,
             'refresh_token': login_window.refresh_token,
             'api_url': login_window.api_url,
+            'actuator_name': login_window.actuator_name,
             'username': login_window.username,
             'password': login_window.password,
+            'browser_type': login_window.browser_type,
+            'headless': login_window.headless,
+            'persistent': login_window.persistent,
+            'trace_enabled': login_window.trace_enabled,
+            'trace_screenshots': login_window.trace_screenshots,
+            'trace_snapshots': login_window.trace_snapshots,
+            'trace_sources': login_window.trace_sources,
+            'launch_timeout': login_window.launch_timeout,
+            'action_timeout': login_window.action_timeout,
+            'retry_count': login_window.retry_count,
+            'step_interval': login_window.step_interval,
+            'max_concurrent': login_window.max_concurrent,
+            'log_level': login_window.log_level,
         }
     return None
 
@@ -617,6 +1076,11 @@ if __name__ == "__main__":
     result = show_login_dialog()
     if result:
         print(f"登录成功: {result['username']} @ {result['api_url']}")
+        print(f"执行器名称: {result['actuator_name'] or '(自动生成)'}")
         print(f"Token: {result['access_token'][:20]}...")
+        print(f"浏览器: {result['browser_type']}, 无头: {result['headless']}, 持久化: {result['persistent']}")
+        print(f"Trace: {result['trace_enabled']}, 截图: {result['trace_screenshots']}, 快照: {result['trace_snapshots']}")
+        print(f"超时: {result['launch_timeout']}s/{result['action_timeout']}s, 并发: {result['max_concurrent']}")
+        print(f"重试: {result['retry_count']}, 步骤间隔: {result['step_interval']}ms, 日志: {result['log_level']}")
     else:
         print("登录取消或失败")
