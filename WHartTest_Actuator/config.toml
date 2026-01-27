@@ -3,7 +3,7 @@ ws_url = "ws://localhost:8000/ws/ui/actuator/"
 api_url = "http://localhost:8000"
 use_gui = true
 api_username = "admin"
-api_password = "123456"
+api_password = "admin123456"
 
 [actuator]
 name = "WHartTest-001"

@@ -88,7 +88,7 @@
             <a href="#" @click="checkProjectAndNavigate($event, '/ai-diagram')">智能图表</a>
           </a-menu-item>
 
-          <a-menu-item key="ui-automation" v-if="hasAutomationScriptsPermission">
+          <a-menu-item key="ui-automation" v-if="hasUiAutomationPermission">
             <template #icon><icon-computer /></template>
             <a href="#" @click="checkProjectAndNavigate($event, '/ui-automation')">UI自动化</a>
           </a-menu-item>
@@ -102,10 +102,6 @@
             <a-menu-item key="testcases" v-if="hasTestcasesPermission">
               <template #icon><icon-code-block /></template>
               <a href="#" @click="checkProjectAndNavigate($event, '/testcases')">用例管理</a>
-            </a-menu-item>
-            <a-menu-item key="automation-scripts" v-if="hasAutomationScriptsPermission">
-              <template #icon><icon-robot /></template>
-              <a href="#" @click="checkProjectAndNavigate($event, '/automation-scripts')">UI脚本库</a>
             </a-menu-item>
             <a-menu-item key="testsuites" v-if="hasTestSuitesPermission">
               <template #icon><icon-folder /></template>
@@ -225,7 +221,6 @@ import {
   IconFolder,
   IconHistory,
   IconExperiment,
-  IconRobot,
   IconHome,
   IconComputer,
 } from '@arco-design/web-vue/es/icon';
@@ -259,7 +254,6 @@ const activeMenu = computed(() => {
   if (path.startsWith('/requirements')) return 'requirements'; // 添加对需求管理路由的识别
   if (path.startsWith('/testsuites')) return 'testsuites'; // 添加对测试套件路由的识别
   if (path.startsWith('/test-executions')) return 'test-executions'; // 添加对执行历史路由的识别
-  if (path.startsWith('/automation-scripts')) return 'automation-scripts'; // 添加对自动化用例路由的识别
   if (path.startsWith('/testcases')) return 'testcases';
   if (path.startsWith('/users')) return 'users';
   if (path.startsWith('/organizations')) return 'organizations';
@@ -301,14 +295,16 @@ const hasTestExecutionsPermission = computed(() => {
   return authStore.hasPermission('testcases.view_testexecution');
 });
 
-const hasAutomationScriptsPermission = computed(() => {
-  return authStore.hasPermission('testcases.view_automationscript');
-});
-
 const hasLangGraphChatPermission = computed(() => {
   return authStore.hasPermission('langgraph_integration.view_llmconfig') ||
          authStore.hasPermission('langgraph_integration.view_chatsession') ||
          authStore.hasPermission('langgraph_integration.view_chatmessage');
+});
+
+const hasUiAutomationPermission = computed(() => {
+  return authStore.hasPermission('ui_automation.view_uimodule') ||
+         authStore.hasPermission('ui_automation.view_uipage') ||
+         authStore.hasPermission('ui_automation.view_uitestcase');
 });
 
 const hasKnowledgePermission = computed(() => {
@@ -346,8 +342,7 @@ const hasMcpConfigsPermission = computed(() => {
 const hasTestManagementMenuItems = computed(() => {
   return hasTestcasesPermission.value ||
          hasTestSuitesPermission.value ||
-         hasTestExecutionsPermission.value ||
-         hasAutomationScriptsPermission.value;
+         hasTestExecutionsPermission.value;
 });
 
 // 检查是否有系统管理菜单项的权限

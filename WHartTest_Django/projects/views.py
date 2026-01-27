@@ -232,9 +232,10 @@ class ProjectViewSet(BaseModelViewSet):
         project = self.get_object()
 
         # 导入所需模型
-        from testcases.models import TestCase, AutomationScript, TestExecution
+        from testcases.models import TestCase, TestExecution
         from skills.models import Skill
         from mcp_tools.models import RemoteMCPConfig
+        from ui_automation.models import UiTestCase, UiExecutionRecord
 
         # 1. 功能用例统计（按审核状态）
         testcase_stats = TestCase.objects.filter(project=project).aggregate(
@@ -246,17 +247,7 @@ class ProjectViewSet(BaseModelViewSet):
             unavailable=Count('id', filter=Q(review_status='unavailable')),
         )
 
-        # 2. UI用例（自动化脚本）统计
-        automation_stats = AutomationScript.objects.filter(
-            test_case__project=project
-        ).aggregate(
-            total=Count('id'),
-            draft=Count('id', filter=Q(status='draft')),
-            active=Count('id', filter=Q(status='active')),
-            deprecated=Count('id', filter=Q(status='deprecated')),
-        )
-
-        # 3. 测试执行统计（最近的执行汇总）
+        # 2. 测试执行统计（最近的执行汇总）
         executions = TestExecution.objects.filter(suite__project=project)
         execution_stats = executions.aggregate(
             total_executions=Count('id'),
@@ -326,6 +317,19 @@ class ProjectViewSet(BaseModelViewSet):
             'active': Skill.objects.filter(is_active=True).count(),
         }
 
+        # 7. UI自动化统计
+        ui_testcases = UiTestCase.objects.filter(project=project)
+        ui_executions = UiExecutionRecord.objects.filter(test_case__project=project)
+        ui_automation_stats = {
+            'total_cases': ui_testcases.count(),
+            'total_executions': ui_executions.count(),
+            'by_status': {
+                'success': ui_executions.filter(status=2).count(),
+                'failed': ui_executions.filter(status=3).count(),
+                'cancelled': ui_executions.filter(status=4).count(),
+            },
+        }
+
         # 构建响应数据
         response_data = {
             'project': {
@@ -340,14 +344,6 @@ class ProjectViewSet(BaseModelViewSet):
                     'needs_optimization': testcase_stats['needs_optimization'],
                     'optimization_pending_review': testcase_stats['optimization_pending_review'],
                     'unavailable': testcase_stats['unavailable'],
-                },
-            },
-            'automation_scripts': {
-                'total': automation_stats['total'],
-                'by_status': {
-                    'draft': automation_stats['draft'],
-                    'active': automation_stats['active'],
-                    'deprecated': automation_stats['deprecated'],
                 },
             },
             'executions': {
@@ -375,6 +371,7 @@ class ProjectViewSet(BaseModelViewSet):
             },
             'mcp': mcp_stats,
             'skills': skill_stats,
+            'ui_automation': ui_automation_stats,
         }
 
         return Response(response_data)

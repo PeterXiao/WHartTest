@@ -30,13 +30,14 @@
 
           <div class="overview-card">
             <div class="overview-header">
-              <icon-robot class="overview-icon" />
-              <span class="overview-title">UI用例</span>
+              <icon-desktop class="overview-icon" />
+              <span class="overview-title">UI自动化</span>
             </div>
-            <div class="overview-value">{{ statistics?.automation_scripts?.total || 0 }}</div>
+            <div class="overview-value">{{ statistics?.ui_automation?.total_cases || 0 }}</div>
             <div class="overview-sub">
-              <span class="sub-item active">启用 {{ statistics?.automation_scripts?.by_status?.active || 0 }}</span>
-              <span class="sub-item draft">草稿 {{ statistics?.automation_scripts?.by_status?.draft || 0 }}</span>
+              <span class="sub-item">执行 {{ statistics?.ui_automation?.total_executions || 0 }}</span>
+              <span class="sub-item passed">成功 {{ statistics?.ui_automation?.by_status?.success || 0 }}</span>
+              <span class="sub-item failed">失败 {{ statistics?.ui_automation?.by_status?.failed || 0 }}</span>
             </div>
           </div>
 
@@ -242,7 +243,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import {
-  IconBarChart, IconFile, IconRobot, IconThunderbolt, IconApps
+  IconBarChart, IconFile, IconThunderbolt, IconApps, IconDesktop
 } from '@arco-design/web-vue/es/icon';
 import { getProjectStatistics, getTokenUsageStats, type ProjectStatistics, type TokenUsageStats } from '@/services/projectService';
 import { useProjectStore } from '@/store/projectStore';
