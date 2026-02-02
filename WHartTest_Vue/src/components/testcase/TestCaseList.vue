@@ -731,14 +731,6 @@ defineExpose({
   padding-bottom: 16px;
 }
 
-:deep(.test-case-table .arco-table-body tr:last-child td) {
-  border-bottom: none !important;
-  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.15) !important;
-  position: relative;
-  z-index: 9;
-  background-color: #fff;
-}
-
 :deep(.test-case-table .arco-pagination) {
   flex-shrink: 0;
   margin-top: 8px;
