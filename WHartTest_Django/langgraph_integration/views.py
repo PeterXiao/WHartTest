@@ -2462,15 +2462,27 @@ class TokenUsageStatsAPIView(APIView):
 
         # 解析日期
         try:
+            today = timezone.now().date()
+            
             if start_date_str:
                 start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
             else:
-                start_date = (timezone.now() - timedelta(days=30)).date()
+                # 根据 group_by 自动计算起始日期
+                if group_by == 'day':
+                    start_date = today
+                elif group_by == 'week':
+                    # 本周一
+                    start_date = today - timedelta(days=today.weekday())
+                elif group_by == 'month':
+                    # 本月1号
+                    start_date = today.replace(day=1)
+                else:
+                    start_date = (timezone.now() - timedelta(days=30)).date()
 
             if end_date_str:
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
             else:
-                end_date = timezone.now().date()
+                end_date = today
         except ValueError:
             return Response(
                 {'error': '日期格式错误，请使用 YYYY-MM-DD'},
