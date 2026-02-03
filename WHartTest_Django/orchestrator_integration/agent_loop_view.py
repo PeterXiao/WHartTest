@@ -27,7 +27,6 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from asgiref.sync import sync_to_async
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.messages.utils import count_tokens_approximately
 from langchain.agents import create_agent
 from wharttest_django.checkpointer import get_async_checkpointer
 
@@ -233,32 +232,26 @@ class AgentLoopStreamAPIView(View):
             tools.extend(builtin_tools)
             logger.info(f"AgentLoopStreamAPI: Added {len(builtin_tools)} builtin tools")
 
-            # 7. 获取或创建 ChatSession
-            chat_session = await sync_to_async(
-                lambda: ChatSession.objects.filter(
-                    session_id=session_id,
-                    user=request.user,
-                    project_id=project_id
-                ).first()
-            )()
-            
-            if not chat_session:
-                prompt_obj = None
-                if prompt_id:
-                    try:
-                        prompt_obj = await sync_to_async(UserPrompt.objects.get)(
-                            id=prompt_id, user=request.user, is_active=True
-                        )
-                    except UserPrompt.DoesNotExist:
-                        pass
+            # 7. 获取或创建 ChatSession（使用 get_or_create 避免竞态条件）
+            prompt_obj = None
+            if prompt_id:
+                try:
+                    prompt_obj = await sync_to_async(UserPrompt.objects.get)(
+                        id=prompt_id, user=request.user, is_active=True
+                    )
+                except UserPrompt.DoesNotExist:
+                    pass
 
-                chat_session = await sync_to_async(ChatSession.objects.create)(
-                    user=request.user,
-                    session_id=session_id,
-                    project=project,
-                    prompt=prompt_obj,
-                    title=f"新对话 - {user_message[:30]}"
-                )
+            chat_session, created = await sync_to_async(ChatSession.objects.get_or_create)(
+                session_id=session_id,
+                defaults={
+                    'user': request.user,
+                    'project': project,
+                    'prompt': prompt_obj,
+                    'title': f"新对话 - {user_message[:30]}"
+                }
+            )
+            if created:
                 logger.info(f"AgentLoopStreamAPI: Created new ChatSession: {session_id}")
 
             # 8. 获取系统提示词
@@ -479,6 +472,36 @@ class AgentLoopStreamAPIView(View):
                     yield create_sse_data({'type': 'error', 'message': f'Streaming error: {str(e)}'})
 
                 # 16. 处理结束状态
+                # 无论是否发生 interrupt，都需要计算和发送 context_update
+                try:
+                    current_state = await agent.aget_state(invoke_config)
+                    all_messages = current_state.values.get("messages", []) if current_state.values else []
+
+                    # 计算真实的 Token 使用量（从 usage_metadata 累计，如果 LLM 不返回则显示 0）
+                    input_tokens = 0
+                    output_tokens = 0
+                    for msg in all_messages:
+                        if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
+                            input_tokens += msg.usage_metadata.get('input_tokens', 0)
+                            output_tokens += msg.usage_metadata.get('output_tokens', 0)
+
+                    total_tokens = input_tokens + output_tokens
+
+                    yield create_sse_data({
+                        'type': 'context_update',
+                        'context_token_count': total_tokens,
+                        'context_limit': context_limit
+                    })
+
+                    # 记录 Token 使用量到 ChatSession
+                    if input_tokens > 0 or output_tokens > 0:
+                        await sync_to_async(self._update_session_token_usage)(
+                            session_id, input_tokens, output_tokens
+                        )
+                        logger.info(f"AgentLoopStreamAPI: Token usage recorded - input={input_tokens}, output={output_tokens}")
+                except Exception as e:
+                    logger.warning(f"AgentLoopStreamAPI: Failed to calculate token count: {e}")
+
                 if user_stopped:
                     yield create_sse_data({
                         'type': 'complete',
@@ -488,35 +511,6 @@ class AgentLoopStreamAPIView(View):
                 elif interrupt_detected:
                     logger.info("AgentLoopStreamAPI: Interrupt detected, returning early")
                 else:
-                    # 正常完成
-                    # 计算 Token 使用量（使用 LangChain 的 count_tokens_approximately 保持一致性）
-                    try:
-                        current_state = await agent.aget_state(invoke_config)
-                        all_messages = current_state.values.get("messages", []) if current_state.values else []
-                        total_tokens = count_tokens_approximately(all_messages)
-
-                        yield create_sse_data({
-                            'type': 'context_update',
-                            'context_token_count': total_tokens,
-                            'context_limit': context_limit
-                        })
-
-                        # 记录 Token 使用量到 ChatSession
-                        input_tokens = 0
-                        output_tokens = 0
-                        for msg in all_messages:
-                            if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
-                                input_tokens += msg.usage_metadata.get('input_tokens', 0)
-                                output_tokens += msg.usage_metadata.get('output_tokens', 0)
-
-                        if input_tokens > 0 or output_tokens > 0:
-                            await sync_to_async(self._update_session_token_usage)(
-                                session_id, input_tokens, output_tokens
-                            )
-                            logger.info(f"AgentLoopStreamAPI: Token usage recorded - input={input_tokens}, output={output_tokens}")
-                    except Exception as e:
-                        logger.warning(f"AgentLoopStreamAPI: Failed to calculate token count: {e}")
-
                     complete_data = {
                         'type': 'complete',
                         'total_steps': step_count
@@ -1078,37 +1072,39 @@ class AgentLoopResumeAPIView(View):
                     yield create_sse_data({'type': 'error', 'message': f'Streaming error: {str(e)}'})
 
                 # 10. 处理结束状态
+                # 无论是否发生 interrupt，都需要计算和发送 context_update
+                try:
+                    current_state = await agent.aget_state(config)
+                    all_messages = current_state.values.get("messages", []) if current_state.values else []
+
+                    # 计算真实的 Token 使用量（从 usage_metadata 累计，如果 LLM 不返回则显示 0）
+                    input_tokens = 0
+                    output_tokens = 0
+                    for msg in all_messages:
+                        if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
+                            input_tokens += msg.usage_metadata.get('input_tokens', 0)
+                            output_tokens += msg.usage_metadata.get('output_tokens', 0)
+
+                    total_tokens = input_tokens + output_tokens
+
+                    yield create_sse_data({
+                        'type': 'context_update',
+                        'context_token_count': total_tokens,
+                        'context_limit': context_limit
+                    })
+
+                    # 记录 Token 使用量到 ChatSession
+                    if input_tokens > 0 or output_tokens > 0:
+                        await sync_to_async(AgentLoopStreamAPIView()._update_session_token_usage)(
+                            session_id, input_tokens, output_tokens
+                        )
+                        logger.info(f"AgentLoopResumeAPI: Token usage recorded - input={input_tokens}, output={output_tokens}")
+                except Exception as e:
+                    logger.warning(f"AgentLoopResumeAPI: Failed to calculate token count: {e}")
+
                 if interrupt_detected:
                     logger.info("AgentLoopResumeAPI: New interrupt detected after resume")
                 else:
-                    # 正常完成 - 计算 Token 使用量（使用 LangChain 的 count_tokens_approximately 保持一致性）
-                    try:
-                        current_state = await agent.aget_state(config)
-                        all_messages = current_state.values.get("messages", []) if current_state.values else []
-                        total_tokens = count_tokens_approximately(all_messages)
-
-                        yield create_sse_data({
-                            'type': 'context_update',
-                            'context_token_count': total_tokens,
-                            'context_limit': context_limit
-                        })
-
-                        # 记录 Token 使用量到 ChatSession
-                        input_tokens = 0
-                        output_tokens = 0
-                        for msg in all_messages:
-                            if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
-                                input_tokens += msg.usage_metadata.get('input_tokens', 0)
-                                output_tokens += msg.usage_metadata.get('output_tokens', 0)
-
-                        if input_tokens > 0 or output_tokens > 0:
-                            await sync_to_async(AgentLoopStreamAPIView()._update_session_token_usage)(
-                                session_id, input_tokens, output_tokens
-                            )
-                            logger.info(f"AgentLoopResumeAPI: Token usage recorded - input={input_tokens}, output={output_tokens}")
-                    except Exception as e:
-                        logger.warning(f"AgentLoopResumeAPI: Failed to calculate token count: {e}")
-
                     yield create_sse_data({
                         'type': 'complete',
                         'total_steps': step_count,
