@@ -27,29 +27,46 @@ logger = logging.getLogger(__name__)
 
 def _create_token_counter(model_name: str) -> Callable[[Iterable], int]:
     """
-    创建基于 tiktoken 的精确 Token 计数器
+    创建基于 usage_metadata 的 Token 计数器
 
     注意：SummarizationMiddleware 需要的 token_counter 签名是:
     Callable[[Iterable[MessageLikeRepresentation]], int]
     即接收消息列表，返回总 token 数
+    
+    计算逻辑：累计所有消息的 usage_metadata.input_tokens + output_tokens
+    这与 LLM 返回的真实 token 使用量一致
     """
-    from langchain_core.messages.utils import count_tokens_approximately
-
     def token_counter(messages: Iterable) -> int:
-        """计算消息列表的 token 总数"""
+        """计算消息列表的 token 总数（使用 usage_metadata）"""
         try:
-            # 使用 LangChain 官方的 count_tokens_approximately
-            # 它会正确处理 content、tool_calls、role 等所有字段
-            return count_tokens_approximately(messages)
-        except Exception as e:
-            logger.warning(f"Token 计数失败，使用粗略估算: {e}")
-            # 回退方案
-            total = 0
+            # 优先使用 usage_metadata 累计（与 agent_loop_view.py 保持一致）
+            input_tokens = 0
+            output_tokens = 0
+            for msg in messages:
+                if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
+                    input_tokens += msg.usage_metadata.get('input_tokens', 0)
+                    output_tokens += msg.usage_metadata.get('output_tokens', 0)
+            
+            total = input_tokens + output_tokens
+            if total > 0:
+                logger.debug(f"token_counter: usage_metadata 累计 = {total} (input={input_tokens}, output={output_tokens})")
+                return total
+            
+            # 如果没有 usage_metadata，使用 tiktoken 估算内容 token
+            # 并乘以估算系数（考虑工具定义等额外 token）
+            content_tokens = 0
             for msg in messages:
                 if hasattr(msg, 'content') and msg.content:
                     content = msg.content if isinstance(msg.content, str) else str(msg.content)
-                    total += context_checker.count_tokens(content, model_name)
-            return total
+                    content_tokens += context_checker.count_tokens(content, model_name)
+            
+            # 估算系数：工具定义、系统提示词等通常占总 token 的 2-3 倍
+            estimated_total = content_tokens * 3
+            logger.debug(f"token_counter: tiktoken 估算 = {estimated_total} (content={content_tokens} * 3)")
+            return estimated_total
+        except Exception as e:
+            logger.warning(f"Token 计数失败: {e}")
+            return 0
 
     return token_counter
 
