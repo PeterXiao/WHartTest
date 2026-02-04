@@ -75,6 +75,43 @@ def api_error_response(message: str, code: int = 400, errors: Any = None) -> Jso
     }, status=code, json_dumps_params={'ensure_ascii': False})
 
 
+def process_mcp_tool_output(content: Any) -> tuple:
+    """
+    处理 MCP 工具返回的内容，提取实际数据并生成摘要
+    
+    Args:
+        content: 工具返回的原始内容
+        
+    Returns:
+        tuple: (processed_content, summary)
+    """
+    # 处理 MCP 工具返回的列表格式，提取 text 内容
+    if isinstance(content, list) and len(content) > 0:
+        first_item = content[0]
+        if isinstance(first_item, dict) and first_item.get('type') == 'text':
+            text_content = first_item.get('text')
+            if text_content is not None:
+                content = text_content
+            # text 为 None 或空时保留原始列表格式
+    
+    # 确保 content 可序列化
+    if content is None:
+        content = ''
+    elif not isinstance(content, (str, dict, list, int, float, bool)):
+        content = str(content)
+    
+    # 生成摘要
+    if isinstance(content, str):
+        summary = content[:200]
+    else:
+        try:
+            summary = json.dumps(content, ensure_ascii=False)[:200]
+        except (TypeError, ValueError):
+            summary = str(content)[:200]
+    
+    return content, summary
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class AgentLoopStreamAPIView(View):
     """
@@ -442,7 +479,10 @@ class AgentLoopStreamAPIView(View):
                                             if hasattr(tool_msg, 'content'):
                                                 content = tool_msg.content
                                                 tool_name = getattr(tool_msg, 'name', None) or getattr(tool_msg, 'tool_name', 'unknown')
-                                                summary = content[:200] if isinstance(content, str) else str(content)[:200]
+                                                
+                                                # 使用辅助函数处理 MCP 工具输出
+                                                content, summary = process_mcp_tool_output(content)
+                                                
                                                 yield create_sse_data({
                                                     'type': 'tool_result',
                                                     'tool_name': tool_name,
@@ -1055,7 +1095,10 @@ class AgentLoopResumeAPIView(View):
                                             if hasattr(tool_msg, 'content'):
                                                 content = tool_msg.content
                                                 tool_name = getattr(tool_msg, 'name', None) or getattr(tool_msg, 'tool_name', 'unknown')
-                                                summary = content[:200] if isinstance(content, str) else str(content)[:200]
+                                                
+                                                # 使用辅助函数处理 MCP 工具输出
+                                                content, summary = process_mcp_tool_output(content)
+                                                
                                                 yield create_sse_data({
                                                     'type': 'tool_result',
                                                     'tool_name': tool_name,

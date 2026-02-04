@@ -398,24 +398,79 @@ const handleStreamingMarkdown = (content: string) => {
 const formatToolMessage = (content: string) => {
   try {
     // 先尝试解析为 JSON
-    const jsonData = JSON.parse(content);
+    let jsonData = JSON.parse(content);
+    
+    // 处理 MCP 工具返回的数组格式: [{"type": "text", "text": "..."}]
+    if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0]?.type === 'text' && jsonData[0]?.text) {
+      // 提取 text 字段的内容
+      const textContent = jsonData[0].text;
+      try {
+        // 尝试解析 text 内容为 JSON
+        const innerJson = JSON.parse(textContent);
+        // 如果是数组，格式化为列表
+        if (Array.isArray(innerJson)) {
+          return innerJson.map((item: any) => `• ${item}`).join('\n');
+        }
+        // 对象格式化为 JSON 代码块
+        const formattedJson = JSON.stringify(innerJson, null, 2);
+        return `\`\`\`json\n${formattedJson}\n\`\`\``;
+      } catch {
+        // text 内容不是 JSON，直接显示
+        return textContent;
+      }
+    }
+    
+    // 如果是简单数组，格式化为列表
+    if (Array.isArray(jsonData) && jsonData.length > 0 && typeof jsonData[0] !== 'object') {
+      return jsonData.map((item: any) => `• ${item}`).join('\n');
+    }
+    
+    // 其他 JSON 格式化为代码块
     const formattedJson = JSON.stringify(jsonData, null, 2);
     return `\`\`\`json\n${formattedJson}\n\`\`\``;
   } catch {
-    // 如果不是 JSON,检查是否已经包含代码块标记
-    if (content.includes('```')) {
-      return content;
+    // 尝试修复 Python 格式的字符串（单引号转双引号）
+    try {
+      const fixedContent = content.replace(/'/g, '"');
+      const jsonData = JSON.parse(fixedContent);
+      
+      // 处理 MCP 格式
+      if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0]?.type === 'text' && jsonData[0]?.text) {
+        const textContent = jsonData[0].text;
+        try {
+          const innerJson = JSON.parse(textContent);
+          if (Array.isArray(innerJson)) {
+            return innerJson.map((item: any) => `• ${item}`).join('\n');
+          }
+          const formattedJson = JSON.stringify(innerJson, null, 2);
+          return `\`\`\`json\n${formattedJson}\n\`\`\``;
+        } catch {
+          return textContent;
+        }
+      }
+      
+      if (Array.isArray(jsonData) && jsonData.length > 0 && typeof jsonData[0] !== 'object') {
+        return jsonData.map((item: any) => `• ${item}`).join('\n');
+      }
+      
+      const formattedJson = JSON.stringify(jsonData, null, 2);
+      return `\`\`\`json\n${formattedJson}\n\`\`\``;
+    } catch {
+      // 如果不是 JSON,检查是否已经包含代码块标记
+      if (content.includes('```')) {
+        return content;
+      }
+      
+      // 检测是否为纯数字或简单文本(少于 50 字符且无换行)
+      const trimmedContent = content.trim();
+      if (trimmedContent.length < 50 && !trimmedContent.includes('\n')) {
+        // 简单文本直接显示,无需代码块
+        return trimmedContent;
+      }
+      
+      // 其他情况包装为代码块
+      return `\`\`\`\n${content}\n\`\`\``;
     }
-    
-    // 检测是否为纯数字或简单文本(少于 50 字符且无换行)
-    const trimmedContent = content.trim();
-    if (trimmedContent.length < 50 && !trimmedContent.includes('\n')) {
-      // 简单文本直接显示,无需代码块
-      return trimmedContent;
-    }
-    
-    // 其他情况包装为代码块
-    return `\`\`\`\n${content}\n\`\`\``;
   }
 };
 </script>
