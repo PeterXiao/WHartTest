@@ -251,7 +251,7 @@ onMounted(() => {
 
 /* 左侧品牌展示区 */
 .brand-panel {
-  flex: 1;
+  flex: 1.6;
   background: linear-gradient(145deg, #1E88E5 0%, #1565C0 50%, #0D47A1 100%);
   display: flex;
   align-items: center;
@@ -304,19 +304,20 @@ onMounted(() => {
 }
 
 .brand-title {
-  font-size: 42px;
-  font-weight: 700;
+  font-size: 56px;
+  font-weight: 800;
   color: #ffffff;
-  margin: 0 0 12px 0;
-  letter-spacing: -0.5px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  margin: 0 0 16px 0;
+  letter-spacing: -1px;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .brand-subtitle {
-  font-size: 18px;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0 0 48px 0;
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 56px 0;
   font-weight: 500;
+  letter-spacing: 1px;
 }
 
 /* 品牌特性列表 - 两列网格 */
