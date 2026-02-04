@@ -149,7 +149,7 @@ export const caseStepsApi = {
 
 // ==================== 执行记录管理 ====================
 export const executionRecordApi = {
-  list: (params?: { test_case?: number; status?: number; trigger_type?: string }) =>
+  list: (params?: { project?: number; test_case?: number; status?: number; trigger_type?: string }) =>
     request.get<PaginatedResponse<UiExecutionRecord>>(`${BASE_URL}/execution-records/`, { params }),
 
   get: (id: number) => request.get<UiExecutionRecord>(`${BASE_URL}/execution-records/${id}/`),
@@ -166,7 +166,7 @@ export const executionRecordApi = {
 
 // ==================== 批量执行记录管理 ====================
 export const batchRecordApi = {
-  list: (params?: { status?: number; trigger_type?: string }) =>
+  list: (params?: { project?: number; status?: number; trigger_type?: string }) =>
     request.get<PaginatedResponse<UiBatchExecutionRecord>>(`${BASE_URL}/batch-records/`, { params }),
 
   get: (id: number) => request.get<UiBatchExecutionRecord>(`${BASE_URL}/batch-records/${id}/`),

@@ -169,12 +169,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { IconRefresh, IconEye, IconDelete } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import { batchRecordApi } from '../api'
 import type { UiBatchExecutionRecord, BatchExecutionStatus, ExecutionStatus } from '../types'
 import { BATCH_STATUS_LABELS, STATUS_LABELS, extractPaginationData, extractResponseData } from '../types'
+import { useProjectStore } from '@/store/projectStore'
+
+const projectStore = useProjectStore()
+const projectId = computed(() => projectStore.currentProject?.id)
 
 const loading = ref(false)
 const recordData = ref<UiBatchExecutionRecord[]>([])
@@ -244,9 +248,10 @@ const getProgressStatus = (record: UiBatchExecutionRecord) => {
 }
 
 const fetchRecords = async () => {
+  if (!projectId.value) return
   loading.value = true
   try {
-    const res = await batchRecordApi.list({ status: filters.status })
+    const res = await batchRecordApi.list({ project: projectId.value, status: filters.status })
     const { items, count } = extractPaginationData(res)
     recordData.value = items
     pagination.total = count
@@ -299,7 +304,13 @@ const refresh = () => fetchRecords()
 
 defineExpose({ refresh })
 
-onMounted(fetchRecords)
+// 监听项目变化，重新加载数据
+watch(projectId, () => {
+  if (projectId.value) {
+    pagination.current = 1
+    fetchRecords()
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>

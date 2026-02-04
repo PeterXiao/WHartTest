@@ -598,9 +598,14 @@ watch(() => props.selectedModuleId, (newVal) => {
   fetchTestCases()
 })
 
-/** 监听项目变化，重新获取环境配置 */
+/** 监听项目变化，重新加载数据 */
 watch(projectId, (newVal) => {
-  if (newVal) fetchEnvConfigs()
+  if (newVal) {
+    pagination.current = 1
+    fetchModules()
+    fetchTestCases()
+    fetchEnvConfigs()
+  }
 }, { immediate: true })
 
 const refresh = () => {
@@ -612,8 +617,6 @@ const refresh = () => {
 defineExpose({ refresh })
 
 onMounted(() => {
-  fetchModules()
-  fetchTestCases()
   // 监听用例执行结果
   offCaseResult = uiWebSocket.on(UiSocketEnum.CASE_RESULT, handleCaseResult)
 })

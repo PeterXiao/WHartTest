@@ -175,15 +175,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { IconRefresh, IconEye, IconDelete } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import { executionRecordApi } from '../api'
 import type { UiExecutionRecord, ExecutionStatus } from '../types'
 import { STATUS_LABELS, extractPaginationData } from '../types'
+import { useProjectStore } from '@/store/projectStore'
 
 const router = useRouter()
+const projectStore = useProjectStore()
+const projectId = computed(() => projectStore.currentProject?.id)
+
 const loading = ref(false)
 const recordData = ref<UiExecutionRecord[]>([])
 const drawerVisible = ref(false)
@@ -267,9 +271,11 @@ const formatScreenshotUrl = (path: string) => {
 }
 
 const fetchRecords = async () => {
+  if (!projectId.value) return
   loading.value = true
   try {
     const res = await executionRecordApi.list({
+      project: projectId.value,
       status: filters.status,
       trigger_type: filters.trigger_type,
     })
@@ -333,7 +339,13 @@ const refresh = () => fetchRecords()
 
 defineExpose({ refresh })
 
-onMounted(fetchRecords)
+// 监听项目变化，重新加载数据
+watch(projectId, () => {
+  if (projectId.value) {
+    pagination.current = 1
+    fetchRecords()
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>

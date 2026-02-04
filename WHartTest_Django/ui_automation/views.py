@@ -197,9 +197,17 @@ class UiExecutionRecordViewSet(viewsets.ModelViewSet):
     queryset = UiExecutionRecord.objects.select_related('test_case', 'executor')
     serializer_class = UiExecutionRecordSerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ['test_case', 'status', 'trigger_type']
+    filterset_fields = {'test_case': ['exact'], 'status': ['exact'], 'trigger_type': ['exact'], 'test_case__project': ['exact']}
     ordering_fields = ['created_at', 'duration']
     ordering = ['-created_at']
+
+    def get_queryset(self):
+        """支持 project 参数过滤"""
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get('project')
+        if project_id:
+            queryset = queryset.filter(test_case__project_id=project_id)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(executor=self.request.user)
@@ -376,6 +384,14 @@ class UiBatchExecutionRecordViewSet(viewsets.ModelViewSet):
     filterset_fields = ['status', 'trigger_type']
     ordering_fields = ['created_at', 'duration', 'total_cases']
     ordering = ['-created_at']
+
+    def get_queryset(self):
+        """支持 project 参数过滤（通过关联的执行记录的测试用例）"""
+        queryset = super().get_queryset()
+        project_id = self.request.query_params.get('project')
+        if project_id:
+            queryset = queryset.filter(execution_records__test_case__project_id=project_id).distinct()
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

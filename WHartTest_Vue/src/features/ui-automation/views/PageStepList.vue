@@ -124,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconSettings } from '@arco-design/web-vue/es/icon'
 import { useProjectStore } from '@/store/projectStore'
@@ -357,6 +357,16 @@ watch(() => props.selectedModuleId, (newVal) => {
   fetchPageSteps()
 })
 
+// 监听项目变化，重新加载数据
+watch(projectId, () => {
+  if (projectId.value) {
+    pagination.current = 1
+    fetchPages()
+    fetchModules()
+    fetchPageSteps()
+  }
+}, { immediate: true })
+
 const refresh = () => {
   fetchPages()
   fetchModules()
@@ -364,12 +374,6 @@ const refresh = () => {
 }
 
 defineExpose({ refresh })
-
-onMounted(() => {
-  fetchPages()
-  fetchModules()
-  fetchPageSteps()
-})
 </script>
 
 <style scoped>

@@ -170,7 +170,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconCheck } from '@arco-design/web-vue/es/icon'
 import { useProjectStore } from '@/store/projectStore'
@@ -401,7 +401,13 @@ const refresh = () => fetchData()
 
 defineExpose({ refresh })
 
-onMounted(fetchData)
+// 监听项目变化，重新加载数据
+watch(projectId, () => {
+  if (projectId.value) {
+    pagination.current = 1
+    fetchData()
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>
