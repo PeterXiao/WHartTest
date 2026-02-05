@@ -2234,7 +2234,7 @@ class UserToolApprovalViewSet(viewsets.ModelViewSet):
         # Skill 工具
         skill_builtin_tools = [
             {'tool_name': 'read_skill_content', 'description': '读取 Skill 的 SKILL.md 内容'},
-            {'tool_name': 'execute_skill_script', 'description': '执行 Skill 脚本命令（需审批）'},
+            {'tool_name': 'execute_skill_script', 'description': '执行 Skill 脚本命令，支持单个或批量并发执行（需审批）'},
         ]
 
         # 组装 Skill 组

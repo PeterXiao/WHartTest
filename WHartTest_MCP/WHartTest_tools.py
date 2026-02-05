@@ -223,6 +223,22 @@ def obtain_use_case_level() -> list:
     """
     return ["P0","P1","P2","P3"]
 
+@mcp.tool(description="获取WHartTest平台测试类型")
+def obtain_test_type() -> list:
+    """
+    获取WHartTest平台测试类型
+    返回测试类型的标识和中文名称
+    """
+    return [
+        {"value": "smoke", "label": "冒烟测试"},
+        {"value": "functional", "label": "功能测试"},
+        {"value": "boundary", "label": "边界测试"},
+        {"value": "exception", "label": "异常测试"},
+        {"value": "permission", "label": "权限测试"},
+        {"value": "security", "label": "安全测试"},
+        {"value": "compatibility", "label": "兼容性测试"}
+    ]
+
 @mcp.tool(description="获取WHartTest平台用例名称和对应id")
 def get_the_list_of_use_cases(
         project_id: int = Field(description='项目id'),
@@ -336,7 +352,8 @@ def add_functional_case(
         module_id: int = Field(description='模块id'),
         steps: list = Field(description='用例步骤,示例：,[{"step_number": 1,"description": "步骤描述1","expected_result": "预期结果1"},{"step_number": 2,"description": "步骤描述2","expected_result": "预期结果2"}]'),
         notes: str = Field(description='备注'),
-        review_status: str = Field(default='pending_review', description='审核状态: pending_review(待审核), approved(通过), needs_optimization(优化), optimization_pending_review(优化待审核), unavailable(不可用)')):
+        review_status: str = Field(default='pending_review', description='审核状态: pending_review(待审核), approved(通过), needs_optimization(优化), optimization_pending_review(优化待审核), unavailable(不可用)'),
+        test_type: str = Field(default='functional', description='测试类型: smoke(冒烟测试), functional(功能测试), boundary(边界测试), exception(异常测试), permission(权限测试), security(安全测试), compatibility(兼容性测试)')):
     """
     保WHartTest平台存WHartTest平台功能测试用例
     """
@@ -349,11 +366,17 @@ def add_functional_case(
             return "前置条件不能为空"
         if not level:
             return "用例等级不能为空"
-        
+
         # 验证用例等级是否为合法值
         valid_levels = ["P0", "P1", "P2", "P3"]
         if level not in valid_levels:
             return f"用例等级必须是以下值之一：{', '.join(valid_levels)}，当前值为：{level}"
+
+        # 验证测试类型是否为合法值
+        valid_test_types = ["smoke", "functional", "boundary", "exception", "permission", "security", "compatibility"]
+        if test_type and test_type not in valid_test_types:
+            return f"测试类型必须是以下值之一：{', '.join(valid_test_types)}，当前值为：{test_type}"
+
         if not module_id:
             return "模块id不能为空"
         if not steps:
@@ -367,7 +390,8 @@ def add_functional_case(
             "module_id": module_id,
             "steps": steps,
             "notes": notes,
-            "review_status": review_status
+            "review_status": review_status,
+            "test_type": test_type
         }
 
         # 发起请求
@@ -429,7 +453,8 @@ def edit_functional_case(
         steps: list = Field(description='用例步骤,示例：,[{"step_number": 1,"description": "步骤描述1","expected_result": "预期结果1"},{"step_number": 2,"description": "步骤描述2","expected_result": "预期结果2"}]'),
         notes: str = Field(description='备注'),
         review_status: str = Field(default=None, description='审核状态(可选): pending_review(待审核), approved(通过), needs_optimization(优化), optimization_pending_review(优化待审核), unavailable(不可用)'),
-        is_optimization: bool = Field(default=False, description='是否为优化操作，True时自动设为optimization_pending_review')):
+        is_optimization: bool = Field(default=False, description='是否为优化操作，True时自动设为optimization_pending_review'),
+        test_type: str = Field(default=None, description='测试类型(可选): smoke(冒烟测试), functional(功能测试), boundary(边界测试), exception(异常测试), permission(权限测试), security(安全测试), compatibility(兼容性测试)')):
     """
     编辑WHartTest平台功能测试用例
     """
@@ -438,7 +463,7 @@ def edit_functional_case(
             return "项目id不能为空"
         if not case_id:
             return "用例id不能为空"
-        
+
         url = base_url + f"/api/projects/{project_id}/testcases/{case_id}/"
         data = {
                 "name": name,
@@ -453,7 +478,14 @@ def edit_functional_case(
         valid_levels = ["P0", "P1", "P2", "P3"]
         if level not in valid_levels:
             return f"用例等级必须是以下值之一：{', '.join(valid_levels)}，当前值为：{level}"
-        
+
+        # 验证测试类型是否为合法值
+        valid_test_types = ["smoke", "functional", "boundary", "exception", "permission", "security", "compatibility"]
+        if test_type:
+            if test_type not in valid_test_types:
+                return f"测试类型必须是以下值之一：{', '.join(valid_test_types)}，当前值为：{test_type}"
+            data["test_type"] = test_type
+
         # 处理优化工作流
         if is_optimization:
             data["review_status"] = "optimization_pending_review"

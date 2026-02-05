@@ -629,8 +629,8 @@ export async function sendChatMessageStream(
 
           // 处理 Agent Loop 工具结果事件
           if (parsed.type === 'tool_result' && streamSessionId && activeStreams.value[streamSessionId]) {
-            // 兼容新旧字段：优先使用 content（完整内容），fallback 到 summary（旧版截断摘要）
-            const toolOutput = parsed.content || parsed.summary;
+            // 优先使用 tool_output（完整内容），fallback 到 summary（截断摘要）
+            const toolOutput = parsed.tool_output || parsed.content || parsed.summary;
             const toolContent = safeStringify(toolOutput);
             if (toolContent) {
               const time = formatStreamTime();
@@ -1232,8 +1232,8 @@ export async function resumeAgentLoop(
 
           // 处理工具结果事件
           if (parsed.type === 'tool_result' && activeStreams.value[sessionId]) {
-            // 兼容新旧字段：优先使用 content（完整内容），fallback 到 summary（旧版截断摘要）
-            const toolOutput = parsed.content || parsed.summary;
+            // 优先使用 tool_output（完整内容），fallback 到 summary（截断摘要）
+            const toolOutput = parsed.tool_output || parsed.content || parsed.summary;
             const toolContent = safeStringify(toolOutput);
             if (toolContent) {
               const time = formatStreamTime();

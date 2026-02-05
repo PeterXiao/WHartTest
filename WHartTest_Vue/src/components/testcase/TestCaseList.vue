@@ -38,6 +38,18 @@
             {{ option.label }}
           </a-option>
         </a-select>
+        <a-select
+          v-model="selectedTestType"
+          :placeholder="isSmallScreen ? '类型' : '筛选测试类型'"
+          allow-clear
+          class="test-type-filter"
+          :style="{ width: isSmallScreen ? '90px' : '130px' }"
+          @change="onTestTypeChange"
+        >
+          <a-option v-for="option in TEST_TYPE_OPTIONS" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </a-option>
+        </a-select>
         <a-button type="outline" class="io-btn" @click="handleExport">
           <template #icon>
             <icon-download />
@@ -116,6 +128,9 @@
       <template #level="{ record }">
         <a-tag :color="getLevelColor(record.level)">{{ record.level }}</a-tag>
       </template>
+      <template #testType="{ record }">
+        <a-tag>{{ getTestTypeLabel(record.test_type) }}</a-tag>
+      </template>
       <template #reviewStatus="{ record }">
         <a-dropdown trigger="click" @select="(value: string) => handleReviewStatusChange(record, value)">
           <a-tag
@@ -176,7 +191,7 @@ import {
   type TestCase,
   type ReviewStatus,
 } from '@/services/testcaseService';
-import { formatDate, getLevelColor, getReviewStatusLabel, getReviewStatusColor, REVIEW_STATUS_OPTIONS } from '@/utils/formatters';
+import { formatDate, getLevelColor, getReviewStatusLabel, getReviewStatusColor, getTestTypeLabel, REVIEW_STATUS_OPTIONS, TEST_TYPE_OPTIONS } from '@/utils/formatters';
 import type { TreeNodeData } from '@arco-design/web-vue';
 
 const props = defineProps<{
@@ -204,6 +219,7 @@ const localSelectedModuleId = ref<number | null>(props.selectedModuleId || null)
 const loading = ref(false);
 const localSearchKeyword = ref('');
 const selectedLevel = ref<string>('');
+const selectedTestType = ref<string>('');
 // 默认选中除"不可用"之外的所有状态
 const DEFAULT_REVIEW_STATUSES: ReviewStatus[] = ['pending_review', 'approved', 'needs_optimization', 'optimization_pending_review'];
 const selectedReviewStatuses = ref<ReviewStatus[]>([...DEFAULT_REVIEW_STATUSES]);
@@ -313,6 +329,7 @@ const columns = [
   { title: '用例名称', dataIndex: 'name', slotName: 'name', width: 180, ellipsis: true, tooltip: false, align: 'center' },
   { title: '前置条件', dataIndex: 'precondition', width: 120, ellipsis: true, tooltip: true, align: 'center' },
   { title: '优先级', dataIndex: 'level', slotName: 'level', width: 80, align: 'center' },
+  { title: '测试类型', dataIndex: 'test_type', slotName: 'testType', width: 90, align: 'center' },
   { title: '审核状态', dataIndex: 'review_status', slotName: 'reviewStatus', width: 120, align: 'center' },
   { title: '所属模块', dataIndex: 'module_detail', slotName: 'module', width: 100, ellipsis: true, tooltip: true, align: 'center' },
   {
@@ -347,6 +364,7 @@ const fetchTestCases = async () => {
       search: localSearchKeyword.value,
       module_id: localSelectedModuleId.value || undefined, // 使用本地模块筛选
       level: selectedLevel.value || undefined, // 添加优先级筛选
+      test_type: selectedTestType.value || undefined, // 添加测试类型筛选
       // 多选审核状态筛选：有选中项则传递，否则不限制（显示全部）
       review_status_in: selectedReviewStatuses.value.length > 0 ? selectedReviewStatuses.value : undefined,
     });
@@ -386,6 +404,12 @@ const onLevelChange = (value: string) => {
 
 const onReviewStatusChange = (value: ReviewStatus[]) => {
   selectedReviewStatuses.value = value;
+  paginationConfig.current = 1;
+  fetchTestCases();
+};
+
+const onTestTypeChange = (value: string) => {
+  selectedTestType.value = value;
   paginationConfig.current = 1;
   fetchTestCases();
 };
@@ -572,6 +596,7 @@ watch(currentProjectId, () => {
   paginationConfig.current = 1;
   localSearchKeyword.value = '';
   selectedLevel.value = ''; // 项目切换时清空优先级筛选
+  selectedTestType.value = ''; // 项目切换时清空测试类型筛选
   selectedReviewStatuses.value = [...DEFAULT_REVIEW_STATUSES]; // 项目切换时重置审核状态筛选
   fetchTestCases();
 });
@@ -658,6 +683,10 @@ defineExpose({
 .review-status-filter {
   width: 10px;
   flex-shrink: 0;
+}
+
+.test-type-filter {
+  flex-shrink: 1;
 }
 
 .review-status-filter :deep(.arco-select-view-multiple) {

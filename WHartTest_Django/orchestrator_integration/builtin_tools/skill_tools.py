@@ -86,24 +86,8 @@ def get_skill_tools(user_id: int, project_id: int = None, test_case_id: int = No
             logger.error(f"[read_skill_content] 读取失败: {e}", exc_info=True)
             return f"错误: {str(e)}"
 
-    @langchain_tool
-    def execute_skill_script(skill_name: str, command: str, session_id: str = None) -> str:
-        """
-        执行指定 Skill 的命令。
-
-        在调用此工具前，应先使用 read_skill_content 获取 Skill 的使用说明。
-        命令会在 Skill 目录下执行，支持任意语言的脚本。
-
-        Args:
-            skill_name: Skill 名称
-            command: 完整的 shell 命令，例如 "python whart_tools.py --action get_projects"
-            session_id: 可选的会话ID。对于 playwright-skill 的 `node run.js ...` 命令，
-                       传入 session_id 可保持浏览器会话跨多次调用持久化。
-                       同一 session_id 的调用会复用同一个浏览器实例。
-
-        Returns:
-            命令执行的输出结果
-        """
+    def _execute_single_skill_script(skill_name: str, command: str, session_id: str = None) -> str:
+        """内部函数：执行单条 Skill 命令"""
         from skills.models import Skill
 
         logger.info(f"[execute_skill_script] skill_name={skill_name}, command={command}")
@@ -296,5 +280,110 @@ def get_skill_tools(user_id: int, project_id: int = None, test_case_id: int = No
         except Exception as e:
             logger.error(f"[execute_skill_script] 执行失败: {e}", exc_info=True)
             return f"错误: {str(e)}"
+
+    @langchain_tool
+    def execute_skill_script(
+        skill_name: str = None,
+        command: str = None,
+        session_id: str = None,
+        commands: list = None,
+        parallel: bool = True,
+        max_workers: int = 10
+    ) -> str:
+        """
+        执行 Skill 命令，支持单个执行或批量并发执行。
+
+        **单个执行模式**：传入 skill_name 和 command
+        **批量执行模式**：传入 commands 列表（自动并发，大幅提升效率）
+
+        Args:
+            skill_name: Skill 名称（单个执行时必填）
+            command: shell 命令，如 "python whart_tools.py --action get_projects"（单个执行时必填）
+            session_id: 可选会话ID，用于 playwright-skill 保持浏览器会话
+            commands: 批量命令列表，每个元素包含 skill_name、command、session_id（可选）
+                示例: [
+                    {"skill_name": "whart-test", "command": "python whart_tools.py --action add_testcase ..."},
+                    {"skill_name": "whart-test", "command": "python whart_tools.py --action add_testcase ..."}
+                ]
+            parallel: 批量模式下是否并发执行（默认 True）
+            max_workers: 批量模式下最大并发数（默认 10）
+
+        Returns:
+            单个模式返回命令输出；批量模式返回 JSON 格式结果汇总
+        """
+        import json
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # 批量执行模式
+        if commands:
+            logger.info(f"[execute_skill_script] 批量模式: {len(commands)} 条命令, parallel={parallel}, max_workers={max_workers}")
+
+            if not commands:
+                return json.dumps({"error": "命令列表为空"}, ensure_ascii=False)
+
+            def execute_single(idx: int, cmd: dict) -> dict:
+                cmd_skill_name = cmd.get("skill_name")
+                cmd_command = cmd.get("command")
+                cmd_session_id = cmd.get("session_id")
+
+                if not cmd_skill_name or not cmd_command:
+                    return {
+                        "index": idx,
+                        "skill_name": cmd_skill_name,
+                        "command": cmd_command,
+                        "error": "缺少 skill_name 或 command"
+                    }
+
+                try:
+                    result = _execute_single_skill_script(cmd_skill_name, cmd_command, cmd_session_id)
+                    return {
+                        "index": idx,
+                        "skill_name": cmd_skill_name,
+                        "command": cmd_command,
+                        "result": result
+                    }
+                except Exception as e:
+                    return {
+                        "index": idx,
+                        "skill_name": cmd_skill_name,
+                        "command": cmd_command,
+                        "error": str(e)
+                    }
+
+            results = [None] * len(commands)
+
+            if parallel and len(commands) > 1:
+                with ThreadPoolExecutor(max_workers=min(max_workers, len(commands))) as executor:
+                    future_to_idx = {
+                        executor.submit(execute_single, idx, cmd): idx
+                        for idx, cmd in enumerate(commands)
+                    }
+                    for future in as_completed(future_to_idx):
+                        idx = future_to_idx[future]
+                        results[idx] = future.result()
+            else:
+                for idx, cmd in enumerate(commands):
+                    results[idx] = execute_single(idx, cmd)
+
+            success_count = sum(1 for r in results if "result" in r and "error" not in r)
+            error_count = len(results) - success_count
+
+            logger.info(f"[execute_skill_script] 批量完成: {success_count} 成功, {error_count} 失败")
+
+            return json.dumps({
+                "summary": {
+                    "total": len(commands),
+                    "success": success_count,
+                    "error": error_count,
+                    "parallel": parallel
+                },
+                "results": results
+            }, ensure_ascii=False, indent=2)
+
+        # 单个执行模式
+        if not skill_name or not command:
+            return "错误: 单个执行模式需要提供 skill_name 和 command 参数"
+
+        return _execute_single_skill_script(skill_name, command, session_id)
 
     return [read_skill_content, execute_skill_script]

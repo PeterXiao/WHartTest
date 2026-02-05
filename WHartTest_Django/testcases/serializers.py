@@ -47,7 +47,7 @@ class TestCaseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'project', 'module_id', 'module_detail', 'name', 'precondition', 'level', 'notes',
             'steps', 'screenshot', 'screenshots', 'creator', 'creator_detail', 'created_at', 'updated_at',
-            'review_status'
+            'review_status', 'test_type'
         ]
         read_only_fields = [
             'id', 'project', 'module_detail', # module_detail 仅用于展示
@@ -99,6 +99,8 @@ class TestCaseSerializer(serializers.ModelSerializer):
             instance.notes = validated_data['notes']
         if 'review_status' in validated_data:
             instance.review_status = validated_data['review_status']
+        if 'test_type' in validated_data:
+            instance.test_type = validated_data['test_type']
 
         # project 和 creator 通常不允许通过此接口更新
         instance.save()

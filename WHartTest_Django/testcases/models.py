@@ -24,6 +24,16 @@ class TestCase(models.Model):
         ('P3', _('P3')),
     ]
 
+    TEST_TYPE_CHOICES = [
+        ('smoke', _('冒烟测试')),
+        ('functional', _('功能测试')),
+        ('boundary', _('边界测试')),
+        ('exception', _('异常测试')),
+        ('permission', _('权限测试')),
+        ('security', _('安全测试')),
+        ('compatibility', _('兼容性测试')),
+    ]
+
     REVIEW_STATUS_CHOICES = [
         ('pending_review', _('待审核')),
         ('approved', _('通过')),
@@ -78,6 +88,13 @@ class TestCase(models.Model):
         default='pending_review',
         blank=True,
         null=True,
+    )
+    test_type = models.CharField(
+        _('测试类型'),
+        max_length=20,
+        choices=TEST_TYPE_CHOICES,
+        default='functional',
+        blank=True,
     )
 
     class Meta:
