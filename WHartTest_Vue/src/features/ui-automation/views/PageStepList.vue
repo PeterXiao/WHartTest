@@ -130,7 +130,7 @@ import { IconPlus, IconEdit, IconDelete, IconSettings } from '@arco-design/web-v
 import { useProjectStore } from '@/store/projectStore'
 import { pageStepsApi, pageApi, moduleApi } from '../api'
 import type { UiPageSteps, UiPageStepsForm, UiPage, UiModule, ExecutionStatus } from '../types'
-import { STATUS_LABELS, extractListData, extractPaginationData } from '../types'
+import { STATUS_LABELS, extractListData, extractPaginationData, extractResponseData } from '../types'
 import StepDetailList from './StepDetailList.vue'
 
 const props = defineProps<{
@@ -282,15 +282,33 @@ const showAddModal = async () => {
 const editPageStep = async (record: UiPageSteps) => {
   isEdit.value = true
   currentPageStep.value = record
-  Object.assign(formData, {
-    project: record.project,
-    page: record.page,
-    module: record.module,
-    name: record.name,
-    description: record.description || '',
-    run_flow: record.run_flow || '',
-    flow_data: record.flow_data || {},
-  })
+  // 获取详情数据（包含完整字段）
+  try {
+    const res = await pageStepsApi.get(record.id)
+    const detail = extractResponseData<UiPageSteps>(res)
+    if (detail) {
+      Object.assign(formData, {
+        project: detail.project,
+        page: detail.page,
+        module: detail.module,
+        name: detail.name,
+        description: detail.description || '',
+        run_flow: detail.run_flow || '',
+        flow_data: detail.flow_data || {},
+      })
+    }
+  } catch {
+    // 降级使用列表数据
+    Object.assign(formData, {
+      project: record.project,
+      page: record.page,
+      module: record.module,
+      name: record.name,
+      description: record.description || '',
+      run_flow: record.run_flow || '',
+      flow_data: record.flow_data || {},
+    })
+  }
   if (!moduleOptions.value.length) await fetchModules()
   if (!pageOptions.value.length) await fetchPages()
   modalVisible.value = true

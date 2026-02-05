@@ -181,7 +181,7 @@ import { IconRefresh, IconEye, IconDelete } from '@arco-design/web-vue/es/icon'
 import { Message } from '@arco-design/web-vue'
 import { executionRecordApi } from '../api'
 import type { UiExecutionRecord, ExecutionStatus } from '../types'
-import { STATUS_LABELS, extractPaginationData } from '../types'
+import { STATUS_LABELS, extractPaginationData, extractResponseData } from '../types'
 import { useProjectStore } from '@/store/projectStore'
 
 const router = useRouter()
@@ -309,10 +309,9 @@ const viewDetail = async (record: UiExecutionRecord) => {
   // 获取详情数据
   try {
     const res = await executionRecordApi.get(record.id)
-    // 提取 data 字段
-    const response = res as unknown as { data?: UiExecutionRecord }
-    if (response?.data && typeof response.data === 'object' && 'id' in response.data) {
-      currentRecord.value = response.data
+    const detail = extractResponseData<UiExecutionRecord>(res)
+    if (detail) {
+      currentRecord.value = detail
     }
   } catch {
     // 静默失败，使用列表数据

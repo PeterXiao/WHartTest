@@ -355,18 +355,39 @@ const showAddModal = async () => {
 const editTestCase = async (record: UiTestCase) => {
   isEdit.value = true
   currentTestCase.value = record
-  Object.assign(formData, {
-    project: record.project,
-    module: record.module,
-    name: record.name,
-    description: record.description || '',
-    level: record.level,
-    front_custom: record.front_custom,
-    front_sql: record.front_sql,
-    posterior_sql: record.posterior_sql,
-    parametrize: record.parametrize,
-    case_flow: record.case_flow || '',
-  })
+  // 获取详情数据（包含完整字段）
+  try {
+    const res = await testCaseApi.get(record.id)
+    const detail = extractResponseData<UiTestCase>(res)
+    if (detail) {
+      Object.assign(formData, {
+        project: detail.project,
+        module: detail.module,
+        name: detail.name,
+        description: detail.description || '',
+        level: detail.level,
+        front_custom: detail.front_custom,
+        front_sql: detail.front_sql,
+        posterior_sql: detail.posterior_sql,
+        parametrize: detail.parametrize,
+        case_flow: detail.case_flow || '',
+      })
+    }
+  } catch {
+    // 降级使用列表数据
+    Object.assign(formData, {
+      project: record.project,
+      module: record.module,
+      name: record.name,
+      description: record.description || '',
+      level: record.level,
+      front_custom: record.front_custom,
+      front_sql: record.front_sql,
+      posterior_sql: record.posterior_sql,
+      parametrize: record.parametrize,
+      case_flow: record.case_flow || '',
+    })
+  }
   if (!moduleOptions.value.length) await fetchModules()
   modalVisible.value = true
 }
