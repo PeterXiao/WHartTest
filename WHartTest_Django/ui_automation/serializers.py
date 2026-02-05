@@ -216,6 +216,21 @@ class UiExecutionRecordListSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
+class UiExecutionRecordBatchDetailSerializer(serializers.ModelSerializer):
+    """批量执行详情中的执行记录序列化器（包含步骤结果和错误信息，不含过大字段）"""
+    test_case_name = serializers.CharField(source='test_case.name', read_only=True)
+    executor_name = serializers.CharField(source='executor.username', read_only=True)
+
+    class Meta:
+        model = UiExecutionRecord
+        fields = [
+            'id', 'batch', 'test_case', 'test_case_name', 'executor', 'executor_name',
+            'status', 'trigger_type', 'start_time', 'end_time', 'duration',
+            'step_results', 'screenshots', 'error_message', 'trace_path', 'created_at'
+        ]
+        read_only_fields = ['created_at']
+
+
 class UiExecutionRecordSerializer(serializers.ModelSerializer):
     """执行记录序列化器"""
     test_case_name = serializers.CharField(source='test_case.name', read_only=True)
@@ -264,8 +279,8 @@ class UiBatchExecutionRecordSerializer(serializers.ModelSerializer):
 
 
 class UiBatchExecutionRecordDetailSerializer(UiBatchExecutionRecordSerializer):
-    """批量执行记录详情序列化器（含关联执行记录列表）"""
-    execution_records = UiExecutionRecordListSerializer(many=True, read_only=True)
+    """批量执行记录详情序列化器（含关联执行记录详情：包含步骤结果和错误信息）"""
+    execution_records = UiExecutionRecordBatchDetailSerializer(many=True, read_only=True)
 
     class Meta(UiBatchExecutionRecordSerializer.Meta):
         fields = '__all__'
