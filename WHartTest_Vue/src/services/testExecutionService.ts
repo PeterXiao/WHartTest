@@ -115,16 +115,6 @@ export interface TestReportResponse {
       screenshots: string[];
       testcase_detail?: TestCase;
     }>;
-    script_results?: Array<{
-      script_id: number;
-      script_name: string;
-      status: string;
-      error_message?: string;
-      execution_time?: number;
-      screenshots: string[];
-      videos?: string[];
-      output?: string;
-    }>;
   };
   error?: string;
   statusCode?: number;
