@@ -124,6 +124,11 @@
             <a href="#" @click="checkProjectAndNavigate($event, '/ui-automation')">UI自动化</a>
           </a-menu-item>
 
+          <a-menu-item key="task-center" v-if="hasTaskCenterPermission">
+            <template #icon><icon-schedule /></template>
+            <a href="#" @click="checkProjectAndNavigate($event, '/task-center')">任务中心</a>
+          </a-menu-item>
+
           <!-- 测试管理子菜单 -->
           <a-sub-menu key="test-management" v-if="hasTestManagementMenuItems">
             <template #icon><icon-experiment /></template>
@@ -261,6 +266,7 @@ import {
   IconExperiment,
   IconHome,
   IconComputer,
+  IconSchedule,
 } from '@arco-design/web-vue/es/icon';
 import '@arco-design/web-vue/dist/arco.css'; // 引入 Arco Design 样式
 
@@ -326,6 +332,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/llm-configs')) return 'llm-configs';
   if (path.startsWith('/langgraph-chat')) return 'langgraph-chat';
   if (path.startsWith('/ai-diagram')) return 'ai-diagram';
+  if (path.startsWith('/task-center')) return 'task-center';
   if (path.startsWith('/knowledge-management')) return 'knowledge-management';
   if (path.startsWith('/api-keys')) return 'api-keys';
   if (path.startsWith('/remote-mcp-configs')) return 'remote-mcp-configs';
@@ -374,6 +381,10 @@ const hasUiAutomationPermission = computed(() => {
 
 const hasKnowledgePermission = computed(() => {
   return authStore.hasPermission('knowledge.view_knowledgebase');
+});
+
+const hasTaskCenterPermission = computed(() => {
+  return authStore.hasPermission('task_center.view_scheduledtask');
 });
 
 const hasUsersPermission = computed(() => {
