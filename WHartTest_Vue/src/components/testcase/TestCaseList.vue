@@ -81,6 +81,7 @@
       :loading="loading"
       :scroll="tableScroll"
       :bordered="{ cell: true }"
+      :sticky-header="true"
       class="test-case-table"
       @page-change="onPageChange"
       @page-size-change="onPageSizeChange"
