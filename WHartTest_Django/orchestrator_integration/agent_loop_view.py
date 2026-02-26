@@ -711,6 +711,11 @@ class AgentLoopStreamAPIView(View):
             session_id = uuid.uuid4().hex
             logger.info(f"AgentLoopStreamAPI: Generated new session_id: {session_id}")
 
+        # 5.1 清理陈旧停止信号，避免上一次"停止"残留影响本轮首次发送
+        # 场景：前端先断开 SSE，再调用 stop API，可能导致信号留存到下一次请求
+        if clear_stop_signal(session_id):
+            logger.info(f"AgentLoopStreamAPI: Cleared stale stop signal for session {session_id}")
+
         # 6. 根据 stream 参数决定响应方式
         if stream_mode:
             # 流式响应 (SSE)
