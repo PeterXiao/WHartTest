@@ -60,6 +60,19 @@
             {{ message.isExpanded ? '收起' : '展开' }}
             <i :class="message.isExpanded ? 'icon-up' : 'icon-down'"></i>
           </div>
+          <div v-if="canPreviewDiagram || canPreviewHtml" class="diagram-preview-actions">
+            <a-button v-if="canPreviewDiagram" type="outline" size="mini" class="diagram-preview-btn" @click="handlePreviewDiagram">
+              <template #icon><icon-eye /></template>
+              预览图表
+            </a-button>
+            <a-button v-if="canPreviewHtml" type="outline" size="mini" class="diagram-preview-btn" @click="handlePreviewHtml">
+              <template #icon><icon-eye /></template>
+              预览HTML
+            </a-button>
+            <a-button v-if="canPreviewDiagram" type="text" size="mini" class="diagram-preview-btn" @click="openDiagramInNewTab">
+              新标签打开
+            </a-button>
+          </div>
         </div>
 
         <!-- 🎨 思考过程消息（可折叠） -->
@@ -106,6 +119,11 @@
             <template #icon><icon-delete /></template>
           </a-button>
         </a-tooltip>
+        <a-tooltip v-if="canPreviewHtml && message.messageType !== 'tool'" content="预览HTML" mini>
+          <a-button type="text" size="mini" class="action-btn" @click="handlePreviewHtml">
+            <template #icon><icon-eye /></template>
+          </a-button>
+        </a-tooltip>
       </div>
 
       <div class="message-time">{{ message.time }}</div>
@@ -117,10 +135,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Button as AButton, Tooltip as ATooltip, Message } from '@arco-design/web-vue';
-import { IconCopy, IconReply, IconRefresh, IconDelete } from '@arco-design/web-vue/es/icon';
+import { IconCopy, IconReply, IconRefresh, IconDelete, IconEye } from '@arco-design/web-vue/es/icon';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import logo from '/WHartTest.png';
+import { extractDiagramToolPayload } from '../utils/diagramToolParser';
+import { extractHtmlPreviewContent } from '../utils/htmlPreviewParser';
 
 // 配置marked以确保代码块正确渲染
 // marked v5+ API发生了变化，许多选项被移除或更改。
@@ -163,11 +183,13 @@ interface Props {
 
 const props = defineProps<Props>();
 
-defineEmits<{
+const emit = defineEmits<{
   'toggle-expand': [message: ChatMessage];
   'quote': [message: ChatMessage];
   'retry': [message: ChatMessage];
   'delete': [message: ChatMessage];
+  'preview-diagram': [payload: { xml: string; sourceMessage: ChatMessage }];
+  'preview-html': [payload: { html: string; sourceMessage: ChatMessage }];
 }>();
 
 // 操作按钮可见性
@@ -179,6 +201,15 @@ const showActions = computed(() => {
 const canQuote = computed(() => ['human', 'ai'].includes(props.message.messageType || ''));
 const canRetry = computed(() => ['human', 'ai'].includes(props.message.messageType || '') && !props.message.isStreaming && !props.message.isLoading);
 const canDelete = computed(() => props.message.messageType !== 'system' && showActions.value);
+
+const htmlPreviewContent = computed(() => {
+  if (props.message.isLoading) return null;
+  return extractHtmlPreviewContent(props.message.content);
+});
+
+const canPreviewHtml = computed(() => {
+  return Boolean(htmlPreviewContent.value);
+});
 
 // 复制到剪贴板（兼容HTTP环境）
 const handleCopy = async () => {
@@ -261,12 +292,54 @@ const isStreamingMessage = computed(() => {
          props.message.content.length > 0;
 });
 
+// 从工具消息中提取图表XML（display_diagram/edit_diagram）
+const diagramPayload = computed(() => {
+  if (props.message.messageType !== 'tool') return null;
+  return extractDiagramToolPayload(props.message.content);
+});
+
 // 判断工具消息是否需要折叠
 const shouldCollapse = computed(() => {
   if (props.message.messageType !== 'tool') return false;
+
+  // 图表工具结果（display/edit）默认折叠，避免大段JSON/XML占据聊天区
+  if (diagramPayload.value?.action === 'display' || diagramPayload.value?.action === 'edit') {
+    return true;
+  }
+
   const lines = props.message.content.split('\n').length;
   return lines > 4;
 });
+
+const canPreviewDiagram = computed(() => {
+  return Boolean(diagramPayload.value?.xml);
+});
+
+const diagramPreviewUrl = computed(() => {
+  if (!diagramPayload.value?.xml) return '';
+  return `https://app.diagrams.net/?splash=0#R${encodeURIComponent(diagramPayload.value.xml)}`;
+});
+
+const handlePreviewDiagram = () => {
+  if (!diagramPayload.value?.xml) return;
+  emit('preview-diagram', {
+    xml: diagramPayload.value.xml,
+    sourceMessage: props.message
+  });
+};
+
+const openDiagramInNewTab = () => {
+  if (!diagramPreviewUrl.value) return;
+  window.open(diagramPreviewUrl.value, '_blank', 'noopener,noreferrer');
+};
+
+const handlePreviewHtml = () => {
+  if (!htmlPreviewContent.value) return;
+  emit('preview-html', {
+    html: htmlPreviewContent.value,
+    sourceMessage: props.message
+  });
+};
 
 const REQUIREMENT_DOC_ID_RE = /需求文档ID[:：]\s*([0-9a-fA-F-]{36})/;
 
@@ -818,6 +891,18 @@ const formatToolMessage = (content: string) => {
 
 .icon-down::before {
   content: '▼';
+}
+
+.diagram-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.diagram-preview-btn {
+  border-radius: 6px !important;
 }
 
 /* 消息操作按钮 */

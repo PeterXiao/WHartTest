@@ -15,6 +15,8 @@
       @quote="$emit('quote', $event)"
       @retry="$emit('retry', $event)"
       @delete="$emit('delete', $event)"
+      @preview-diagram="$emit('preview-diagram', $event)"
+      @preview-html="$emit('preview-html', $event)"
     />
   </div>
 </template>
@@ -57,6 +59,8 @@ defineEmits<{
   'quote': [message: ChatMessage];
   'retry': [message: ChatMessage];
   'delete': [message: ChatMessage];
+  'preview-diagram': [payload: { xml: string; sourceMessage: ChatMessage }];
+  'preview-html': [payload: { html: string; sourceMessage: ChatMessage }];
 }>();
 
 const messagesContainer = ref<HTMLElement | null>(null);

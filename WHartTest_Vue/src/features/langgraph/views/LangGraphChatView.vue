@@ -41,6 +41,8 @@
         @quote="handleQuote"
         @retry="handleRetry"
         @delete="handleDeleteMessage"
+        @preview-diagram="handlePreviewDiagram"
+        @preview-html="handlePreviewHtml"
       />
 
       <!-- ⭐ HITL 工具审批卡片（输入框上方） -->
@@ -79,6 +81,40 @@
       v-model:visible="isToolApprovalSettingsVisible"
       :session-id="sessionId"
     />
+
+    <!-- 图表预览弹窗 -->
+    <a-modal
+      v-model:visible="diagramPreviewVisible"
+      title="图表预览"
+      :width="'90%'"
+      :footer="false"
+      :mask-closable="true"
+      :unmount-on-close="true"
+    >
+      <iframe
+        v-if="diagramPreviewUrl"
+        ref="diagramPreviewIframeRef"
+        :src="diagramPreviewUrl"
+        class="diagram-preview-iframe"
+      ></iframe>
+    </a-modal>
+
+    <!-- HTML 预览弹窗 -->
+    <a-modal
+      v-model:visible="htmlPreviewVisible"
+      title="HTML 预览"
+      :width="'90%'"
+      :footer="false"
+      :mask-closable="true"
+      :unmount-on-close="true"
+    >
+      <iframe
+        v-if="htmlPreviewContent"
+        class="diagram-preview-iframe"
+        :srcdoc="htmlPreviewContent"
+        sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+      ></iframe>
+    </a-modal>
   </div>
 </template>
 
@@ -154,6 +190,16 @@ interface ChatSession {
   messageCount: number;
 }
 
+interface DiagramPreviewPayload {
+  xml: string;
+  sourceMessage: ChatMessage;
+}
+
+interface HtmlPreviewPayload {
+  html: string;
+  sourceMessage: ChatMessage;
+}
+
 const messages = ref<ChatMessage[]>([]);
 const isLoading = ref(false);
 const sessionId = ref<string>('');
@@ -171,6 +217,12 @@ const topK = ref(5); // 检索结果数量
 
 // 消息操作相关
 const quotedMessage = ref<ChatMessage | null>(null); // 引用的消息
+const diagramPreviewVisible = ref(false);
+const diagramPreviewXml = ref('');
+const diagramPreviewIframeRef = ref<HTMLIFrameElement | null>(null);
+const diagramPreviewReady = ref(false);
+const htmlPreviewVisible = ref(false);
+const htmlPreviewContent = ref('');
 
 // 提示词相关
 const selectedPromptId = ref<number | null>(null); // 用户选择的提示词ID
@@ -241,6 +293,82 @@ const contextTokenInfo = computed(() => {
 
   return { tokenCount: 0, limit: defaultLimit };
 });
+
+// 规范化历史消息内容：
+// 后端历史接口在 tool 消息中可能返回数组/对象（如 [{type:"text", text:"..."}]），
+// 前端渲染链路按字符串处理，需要先统一为字符串。
+const normalizeHistoryContent = (historyItem: ChatHistoryMessage): string => {
+  const rawContent: unknown = (historyItem as any).content;
+
+  if (typeof rawContent === 'string') {
+    return rawContent;
+  }
+
+  if (historyItem.type === 'tool' && Array.isArray(rawContent)) {
+    const textItem = rawContent.find((item: any) =>
+      item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string'
+    );
+    if (textItem?.text) {
+      return textItem.text;
+    }
+  }
+
+  try {
+    return JSON.stringify(rawContent, null, 2);
+  } catch {
+    return String(rawContent ?? '');
+  }
+};
+
+const getFullUrl = (url: string) => {
+  return url.startsWith('/') ? `${window.location.origin}${url}` : url;
+};
+
+const drawioPreviewBaseUrl = getFullUrl(import.meta.env.VITE_DRAWIO_URL || 'https://embed.diagrams.net');
+const drawioPreviewOrigin = computed(() => new URL(drawioPreviewBaseUrl).origin);
+
+const diagramPreviewUrl = computed(() => {
+  if (!diagramPreviewXml.value) return '';
+  const params = new URLSearchParams({
+    embed: '1',
+    proto: 'json',
+    spin: '1',
+    ui: 'kennedy',
+    splash: '0',
+    noSaveBtn: '1',
+    noExitBtn: '1',
+    toolbar: '0',
+    math: '0'
+  });
+  return `${drawioPreviewBaseUrl}/?${params.toString()}`;
+});
+
+const sendDiagramPreviewXml = () => {
+  if (!diagramPreviewIframeRef.value?.contentWindow || !diagramPreviewXml.value) return;
+  diagramPreviewIframeRef.value.contentWindow.postMessage(
+    JSON.stringify({
+      action: 'load',
+      xml: diagramPreviewXml.value
+    }),
+    drawioPreviewOrigin.value
+  );
+};
+
+const handleDiagramPreviewMessage = (event: MessageEvent) => {
+  if (event.origin !== drawioPreviewOrigin.value) return;
+
+  try {
+    const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.event === 'init') {
+      diagramPreviewReady.value = true;
+      sendDiagramPreviewXml();
+    }
+  } catch {
+    // 忽略非 JSON 消息
+  }
+};
 
 // ⭐ HITL 工具审批相关
 const toolApprovalDialogVisible = ref(false);
@@ -513,7 +641,7 @@ const enrichMessagesWithSeparators = (rawHistory: ChatHistoryMessage[], formatHi
 
     // 转换历史消息为 ChatMessage 格式
     const message: ChatMessage = {
-      content: historyItem.content,
+      content: normalizeHistoryContent(historyItem),
       isUser: historyItem.type === 'human',
       time: formatHistoryTime(historyItem.timestamp),
       messageType: historyItem.type
@@ -818,6 +946,31 @@ const toggleExpand = (message: ChatMessage) => {
 // 处理引用消息
 const handleQuote = (message: ChatMessage) => {
   quotedMessage.value = message;
+};
+
+const handlePreviewDiagram = (payload: DiagramPreviewPayload) => {
+  if (!payload.xml || !payload.xml.trim()) {
+    Message.warning('未检测到可预览的图表XML');
+    return;
+  }
+  if (!diagramPreviewVisible.value) {
+    diagramPreviewReady.value = false;
+  }
+  diagramPreviewXml.value = payload.xml;
+  diagramPreviewVisible.value = true;
+
+  if (diagramPreviewReady.value) {
+    sendDiagramPreviewXml();
+  }
+};
+
+const handlePreviewHtml = (payload: HtmlPreviewPayload) => {
+  if (!payload.html || !payload.html.trim()) {
+    Message.warning('未检测到可预览的HTML内容');
+    return;
+  }
+  htmlPreviewContent.value = payload.html;
+  htmlPreviewVisible.value = true;
 };
 
 // 清除引用
@@ -1804,7 +1957,15 @@ watch([useKnowledgeBase, selectedKnowledgeBaseId, similarityThreshold, topK], ()
   saveKnowledgeBaseSettings();
 }, { deep: true });
 
+watch(diagramPreviewVisible, (visible) => {
+  if (!visible) {
+    diagramPreviewReady.value = false;
+  }
+});
+
 onMounted(async () => {
+  window.addEventListener('message', handleDiagramPreviewMessage);
+
   // ⭐加载保存的提示词ID
   loadSavedPromptId();
   
@@ -1895,6 +2056,7 @@ onActivated(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('message', handleDiagramPreviewMessage);
   // 组件卸载时，终止任何正在进行的流式请求
   abortController.abort();
 });
@@ -1923,5 +2085,13 @@ export default {
   height: 100%;
   background-color: #f7f8fa;
   overflow: hidden;
+}
+
+.diagram-preview-iframe {
+  width: 100%;
+  height: 72vh;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  background: #fff;
 }
 </style>
