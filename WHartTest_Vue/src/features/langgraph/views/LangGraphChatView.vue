@@ -799,7 +799,9 @@ const solidifyStreamContent = () => {
             isUser: false,
             time: msg.time,
             messageType: msg.type as ChatMessage['messageType'],
+            toolName: msg.toolName,
             isExpanded: msg.isExpanded,
+            imageDataUrl: msg.imageDataUrl,
             isThinkingProcess: msg.isThinkingProcess,
             isThinkingExpanded: msg.isThinkingExpanded
           };
@@ -1554,7 +1556,9 @@ const displayedMessages = computed(() => {
             isUser: false,
             time: msg.time,
             messageType: msg.type as ChatMessage['messageType'],
+            toolName: msg.toolName,
             isExpanded: msg.isExpanded,
+            imageDataUrl: msg.imageDataUrl,
             isThinkingProcess: msg.isThinkingProcess,
             isThinkingExpanded: msg.isThinkingExpanded
           };

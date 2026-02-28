@@ -829,7 +829,7 @@ const formatToolMessage = (content: string) => {
 .message-image-container {
   margin-bottom: 8px;
   max-width: 100%;
-  width: 100%;
+  width: fit-content;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -838,7 +838,7 @@ const formatToolMessage = (content: string) => {
 }
 
 .message-image {
-  width: 100%;
+  width: auto;
   height: auto;
   max-width: 100%;
   max-width: min(100%, 600px); /* 限制图片最大宽度为600px或容器宽度，取较小值 */
