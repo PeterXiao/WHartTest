@@ -461,6 +461,8 @@ class TaskConsumer:
         case_ids = args.get('case_ids', [])
         env_config_id = args.get('env_config_id')
         batch_id = args.get('batch_id')
+        executor_id = args.get('executor_id')
+        executor_name = args.get('executor_name')
         # 从配置获取并发数
         max_concurrent = getattr(self.config, 'max_concurrent', 3) if self.config else 3
         if not case_ids:
@@ -517,6 +519,11 @@ class TaskConsumer:
             result_data = result.model_dump()
             if batch_id:
                 result_data['batch_id'] = batch_id
+            # 添加执行人信息
+            if executor_id:
+                result_data['executor_id'] = executor_id
+            if executor_name:
+                result_data['executor_name'] = executor_name
             await self.ws_client.send_result(
                 UiSocketEnum.CASE_RESULT,
                 result_data,
