@@ -26,7 +26,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from asgiref.sync import sync_to_async
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
 from langchain.agents import create_agent
 from wharttest_django.checkpointer import get_async_checkpointer
 
@@ -110,6 +110,172 @@ def process_mcp_tool_output(content: Any) -> tuple:
             summary = str(content)[:200]
     
     return content, summary
+
+
+def _extract_tool_call_ids(tool_calls: Any) -> List[str]:
+    """从 AIMessage.tool_calls 中提取 tool_call_id 列表。"""
+    ids: List[str] = []
+    if not tool_calls:
+        return ids
+
+    for tool_call in tool_calls:
+        call_id = None
+        if isinstance(tool_call, dict):
+            call_id = tool_call.get("id") or tool_call.get("tool_call_id")
+        else:
+            call_id = getattr(tool_call, "id", None) or getattr(tool_call, "tool_call_id", None)
+
+        if call_id:
+            ids.append(str(call_id))
+
+    return ids
+
+
+def _collect_invalid_tool_call_message_ids(messages: List[Any]) -> Dict[str, Any]:
+    """
+    检测并收集会导致 provider 400 的非法消息:
+    1) assistant.tool_calls 未被完整的 ToolMessage 响应
+    2) 没有可匹配 tool_call_id 的悬空 ToolMessage
+    """
+    remove_ids: set[str] = set()
+    issues: List[str] = []
+
+    pending: Optional[Dict[str, Any]] = None
+
+    def finalize_pending(reason: str) -> None:
+        nonlocal pending
+        if not pending:
+            return
+
+        remaining_ids = pending["remaining_ids"]
+        if remaining_ids:
+            assistant_id = pending.get("assistant_id")
+            if assistant_id:
+                remove_ids.add(assistant_id)
+            else:
+                issues.append(f"{reason}: unresolved assistant message has no id")
+
+            for tool_msg_id in pending.get("matched_tool_message_ids", set()):
+                if tool_msg_id:
+                    remove_ids.add(tool_msg_id)
+                else:
+                    issues.append(f"{reason}: matched tool message has no id")
+
+            issues.append(f"{reason}: missing tool responses for {sorted(remaining_ids)}")
+
+        pending = None
+
+    for msg in messages:
+        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+            # 先结束上一段 pending，避免出现 tool_calls 嵌套/穿插
+            finalize_pending("new_assistant_message_before_previous_tool_calls_completed")
+
+            call_ids = set(_extract_tool_call_ids(msg.tool_calls))
+            if not call_ids:
+                # tool_calls 存在但没有可用 id，直接剔除该 assistant 消息
+                msg_id = getattr(msg, "id", None)
+                if msg_id:
+                    remove_ids.add(msg_id)
+                else:
+                    issues.append("assistant_with_tool_calls_has_no_tool_call_id_and_no_message_id")
+                continue
+
+            pending = {
+                "assistant_id": getattr(msg, "id", None),
+                "remaining_ids": call_ids,
+                "matched_tool_message_ids": set(),
+            }
+            continue
+
+        if isinstance(msg, ToolMessage):
+            msg_id = getattr(msg, "id", None)
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            tool_call_id = str(tool_call_id) if tool_call_id else ""
+
+            if pending and tool_call_id and tool_call_id in pending["remaining_ids"]:
+                pending["remaining_ids"].remove(tool_call_id)
+                pending["matched_tool_message_ids"].add(msg_id)
+            else:
+                # 悬空 tool message
+                if msg_id:
+                    remove_ids.add(msg_id)
+                else:
+                    issues.append(f"dangling_tool_message_without_id(tool_call_id={tool_call_id or 'unknown'})")
+            continue
+
+        # 遇到非 ToolMessage，若 pending 仍未完成则视为非法序列
+        if pending:
+            finalize_pending("non_tool_message_before_tool_calls_completed")
+
+    # 序列末尾仍有未完成 tool_calls
+    finalize_pending("end_of_history_before_tool_calls_completed")
+
+    return {
+        "remove_ids": sorted(remove_ids),
+        "issues": issues,
+    }
+
+
+async def _sanitize_history_tool_call_mismatch(
+    agent: Any,
+    invoke_config: Dict[str, Any],
+    log_prefix: str,
+) -> Dict[str, Any]:
+    """
+    在实际调用模型前修复历史消息中的 tool_calls/tool_call_id 不一致。
+    """
+    try:
+        current_state = await agent.aget_state(invoke_config)
+    except Exception as e:
+        logger.warning(f"{log_prefix}: Failed to load state before sanitize: {e}")
+        return {"removed_count": 0, "sanitized": False}
+
+    values = current_state.values if hasattr(current_state, "values") and current_state.values else {}
+    messages = values.get("messages", []) if isinstance(values, dict) else []
+    if not messages:
+        return {"removed_count": 0, "sanitized": False}
+
+    analysis = _collect_invalid_tool_call_message_ids(messages)
+    remove_ids = analysis["remove_ids"]
+    if not remove_ids:
+        return {"removed_count": 0, "sanitized": False}
+
+    remove_updates = [RemoveMessage(id=msg_id) for msg_id in remove_ids]
+    available_nodes = list(getattr(agent, "nodes", {}).keys())
+    attempts: List[Optional[str]] = [None]
+    for preferred in ("agent", "tools", "model"):
+        if preferred in available_nodes and preferred not in attempts:
+            attempts.append(preferred)
+    if available_nodes and available_nodes[0] not in attempts:
+        attempts.append(available_nodes[0])
+
+    last_error: Optional[Exception] = None
+    used_as_node: Optional[str] = None
+    for as_node in attempts:
+        try:
+            if as_node is None:
+                await agent.aupdate_state(invoke_config, {"messages": remove_updates})
+            else:
+                await agent.aupdate_state(invoke_config, {"messages": remove_updates}, as_node=as_node)
+            used_as_node = as_node
+            break
+        except Exception as e:
+            last_error = e
+
+    if used_as_node is None:
+        logger.error(
+            f"{log_prefix}: Failed to sanitize history tool-call mismatch. "
+            f"remove_count={len(remove_ids)}, available_nodes={available_nodes}, error={last_error}",
+            exc_info=True,
+        )
+        return {"removed_count": 0, "sanitized": False}
+
+    issue_preview = "; ".join(analysis["issues"][:3]) if analysis["issues"] else "n/a"
+    logger.warning(
+        f"{log_prefix}: Sanitized invalid tool-call history, removed {len(remove_ids)} messages "
+        f"(as_node={used_as_node or 'auto'}). issues={issue_preview}"
+    )
+    return {"removed_count": len(remove_ids), "sanitized": True}
 
 
 def calculate_context_tokens(messages: List[Any], model_name: str = "gpt-4o") -> tuple[int, int, int]:
@@ -416,6 +582,13 @@ class AgentLoopStreamAPIView(View):
                     "recursion_limit": 1000  # 支持约500次工具调用
                 }
                 input_messages = {"messages": [user_msg]}
+
+                # 13.1 发送前修复历史消息中未配对的 tool_calls/tool_call_id
+                await _sanitize_history_tool_call_mismatch(
+                    agent=agent,
+                    invoke_config=invoke_config,
+                    log_prefix="AgentLoopStreamAPI",
+                )
 
                 # 14. 步骤跟踪状态
                 step_count = 0
@@ -1060,6 +1233,13 @@ class AgentLoopResumeAPIView(View):
                     "configurable": {"thread_id": thread_id},
                     "recursion_limit": 1000
                 }
+
+                # 6.1 恢复执行前，先修复历史消息中未配对的 tool_calls/tool_call_id
+                await _sanitize_history_tool_call_mismatch(
+                    agent=agent,
+                    invoke_config=config,
+                    log_prefix="AgentLoopResumeAPI",
+                )
 
                 # 7. 构建 Command 来 resume
                 command = Command(resume=resume_value)
