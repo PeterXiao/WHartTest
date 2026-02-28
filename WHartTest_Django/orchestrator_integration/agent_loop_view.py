@@ -13,11 +13,16 @@ Agent Loop API 视图 (LangChain v1 重构版)
 - SSE 事件格式与旧版保持兼容，前端无需修改
 """
 import asyncio
+import base64
 import json
 import logging
+import os
+import re
 import uuid
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
+import httpx
 from django.http import StreamingHttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -73,6 +78,166 @@ def api_error_response(message: str, code: int = 400, errors: Any = None) -> Jso
         'data': None,
         'errors': errors
     }, status=code, json_dumps_params={'ensure_ascii': False})
+
+
+_MARKDOWN_IMAGE_URL_RE = re.compile(r'!\[[^\]]*?\]\((?P<url>https?://[^)\s]+)\)', re.IGNORECASE)
+_PLAIN_HTTP_URL_RE = re.compile(r'(?P<url>https?://[^\s<>"\']+)', re.IGNORECASE)
+_URL_LEADING_WRAP_CHARS = "([<{\"'“‘（【《「『"
+_URL_TRAILING_WRAP_CHARS = ")]}>\"'”’）】》」』.,;!?，。；！？、"
+
+
+def _get_env_int(name: str, default: int, min_value: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(min_value, int(raw))
+    except ValueError:
+        logger.warning("AgentLoopStreamAPI: Invalid int env %s=%s, fallback=%s", name, raw, default)
+        return default
+
+
+def _get_env_float(name: str, default: float, min_value: float = 0.1) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(min_value, float(raw))
+    except ValueError:
+        logger.warning("AgentLoopStreamAPI: Invalid float env %s=%s, fallback=%s", name, raw, default)
+        return default
+
+
+_LINKED_IMAGE_URL_ALLOWLIST = {
+    host.strip().lower()
+    for host in os.getenv("AGENT_LOOP_IMAGE_URL_ALLOWLIST", "*").split(",")
+    if host.strip()
+}
+_MAX_LINKED_IMAGES_PER_REQUEST = _get_env_int("AGENT_LOOP_MAX_LINKED_IMAGES", 3, min_value=1)
+_MAX_LINKED_IMAGE_BYTES = _get_env_int("AGENT_LOOP_MAX_LINKED_IMAGE_BYTES", 5 * 1024 * 1024, min_value=1024)
+_LINKED_IMAGE_FETCH_TIMEOUT = _get_env_float("AGENT_LOOP_LINKED_IMAGE_FETCH_TIMEOUT", 8.0, min_value=1.0)
+
+
+def _extract_linked_image_urls(text: str) -> List[str]:
+    """从用户消息中提取图片 URL（支持 Markdown 图片语法和纯 URL）。"""
+    if not text:
+        return []
+
+    urls: List[str] = []
+    seen: set[str] = set()
+
+    def _normalize_url(candidate: str) -> str:
+        url = (candidate or "").strip()
+        while url and url[0] in _URL_LEADING_WRAP_CHARS:
+            url = url[1:]
+        while url and url[-1] in _URL_TRAILING_WRAP_CHARS:
+            url = url[:-1]
+        return url
+
+    for pattern in (_MARKDOWN_IMAGE_URL_RE, _PLAIN_HTTP_URL_RE):
+        for match in pattern.finditer(text):
+            url = _normalize_url(match.group("url") or "")
+            if not url or url in seen:
+                continue
+
+            parsed = urlparse(url)
+            if parsed.scheme.lower() not in ("http", "https"):
+                continue
+
+            seen.add(url)
+            urls.append(url)
+
+    return urls
+
+
+def _is_linked_image_url_allowed(url: str) -> bool:
+    """校验图片 URL 是否在允许的 host 白名单中（支持 * 全放开）。"""
+    if "*" in _LINKED_IMAGE_URL_ALLOWLIST or "all" in _LINKED_IMAGE_URL_ALLOWLIST:
+        return True
+
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").strip().lower()
+    return bool(host and host in _LINKED_IMAGE_URL_ALLOWLIST)
+
+
+async def _download_linked_image_as_data_url(url: str) -> Optional[str]:
+    """下载图片 URL 并转为 data URL，供视觉模型消费。"""
+    if not _is_linked_image_url_allowed(url):
+        logger.warning(
+            "AgentLoopStreamAPI: Skip linked image URL not in allowlist. url=%s, allowlist=%s",
+            url,
+            sorted(_LINKED_IMAGE_URL_ALLOWLIST),
+        )
+        return None
+
+    timeout = httpx.Timeout(_LINKED_IMAGE_FETCH_TIMEOUT, connect=_LINKED_IMAGE_FETCH_TIMEOUT)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            async with client.stream("GET", url, headers={"Accept": "image/*"}) as response:
+                response.raise_for_status()
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                if not content_type.startswith("image/"):
+                    logger.warning(
+                        "AgentLoopStreamAPI: Skip linked URL with non-image content-type. url=%s, content_type=%s",
+                        url,
+                        content_type or "unknown",
+                    )
+                    return None
+
+                data = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if not chunk:
+                        continue
+                    if len(data) + len(chunk) > _MAX_LINKED_IMAGE_BYTES:
+                        logger.warning(
+                            "AgentLoopStreamAPI: Skip linked image over size limit. url=%s, max_bytes=%s",
+                            url,
+                            _MAX_LINKED_IMAGE_BYTES,
+                        )
+                        return None
+                    data.extend(chunk)
+
+                if not data:
+                    logger.warning("AgentLoopStreamAPI: Skip empty linked image response. url=%s", url)
+                    return None
+
+                encoded = base64.b64encode(bytes(data)).decode("utf-8")
+                return f"data:{content_type};base64,{encoded}"
+    except Exception as e:
+        logger.warning("AgentLoopStreamAPI: Failed to fetch linked image url=%s, error=%s", url, e)
+        return None
+
+
+async def _collect_linked_image_data_urls(
+    user_message: str,
+    linked_urls: Optional[List[str]] = None,
+) -> List[str]:
+    """从用户消息 URL 中收集可用图片，并转换为 data URL 列表。"""
+    if linked_urls is None:
+        linked_urls = _extract_linked_image_urls(user_message)
+    if not linked_urls:
+        return []
+
+    limited_urls = linked_urls[:_MAX_LINKED_IMAGES_PER_REQUEST]
+    if len(linked_urls) > len(limited_urls):
+        logger.info(
+            "AgentLoopStreamAPI: Truncated linked image URLs from %s to %s",
+            len(linked_urls),
+            len(limited_urls),
+        )
+
+    download_tasks = [_download_linked_image_as_data_url(url) for url in limited_urls]
+    results = await asyncio.gather(*download_tasks, return_exceptions=True)
+
+    data_urls: List[str] = []
+    for url, result in zip(limited_urls, results):
+        if isinstance(result, Exception):
+            logger.warning("AgentLoopStreamAPI: Linked image download task failed. url=%s, error=%s", url, result)
+            continue
+        if result:
+            data_urls.append(result)
+
+    return data_urls
 
 
 def process_mcp_tool_output(content: Any) -> tuple:
@@ -536,12 +701,45 @@ class AgentLoopStreamAPIView(View):
                 effective_prompt = (effective_prompt or '') + PLAYWRIGHT_SCRIPT_INSTRUCTION
                 logger.info(f"AgentLoopStreamAPI: 已追加脚本生成指令")
 
-            # 9. 构建用户消息（支持多模态）
-            if image_base64:
-                human_message_content = [
-                    {"type": "text", "text": user_message},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-                ]
+            # 9. 构建用户消息（支持多模态：上传图片 + 链接图片）
+            linked_image_data_urls: List[str] = []
+            linked_image_urls = _extract_linked_image_urls(user_message)
+            if linked_image_urls:
+                logger.info(
+                    "AgentLoopStreamAPI: Extracted %s candidate image URLs from message",
+                    len(linked_image_urls),
+                )
+                if active_config.supports_vision:
+                    linked_image_data_urls = await _collect_linked_image_data_urls(
+                        user_message,
+                        linked_urls=linked_image_urls,
+                    )
+                    if linked_image_data_urls:
+                        logger.info(
+                            "AgentLoopStreamAPI: Loaded %s linked images for multimodal input",
+                            len(linked_image_data_urls),
+                        )
+                else:
+                    logger.warning(
+                        "AgentLoopStreamAPI: Found %s linked image URLs but model %s does not support vision",
+                        len(linked_image_urls),
+                        active_config.name,
+                    )
+            elif "http://" in user_message.lower() or "https://" in user_message.lower():
+                logger.warning("AgentLoopStreamAPI: Message contains URL text but extractor found 0 valid URLs")
+
+            if image_base64 or linked_image_data_urls:
+                human_message_content = [{"type": "text", "text": user_message}]
+                for data_url in linked_image_data_urls:
+                    human_message_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": data_url},
+                    })
+                if image_base64:
+                    human_message_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                    })
             else:
                 human_message_content = user_message
             user_msg = HumanMessage(content=human_message_content)
