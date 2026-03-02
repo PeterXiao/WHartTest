@@ -524,11 +524,13 @@ class AgentLoopStreamAPIView(View):
         """更新会话的 Token 使用统计"""
         try:
             from django.db.models import F
+            from django.utils import timezone
             ChatSession.objects.filter(session_id=session_id).update(
                 total_input_tokens=F('total_input_tokens') + input_tokens,
                 total_output_tokens=F('total_output_tokens') + output_tokens,
                 total_tokens=F('total_tokens') + input_tokens + output_tokens,
                 request_count=F('request_count') + 1,
+                updated_at=timezone.now(),
             )
         except Exception as e:
             logger.warning(f"Failed to update session token usage: {e}")
