@@ -592,6 +592,16 @@ onMounted(() => {
   min-height: 50px;
 }
 
+/* 隐藏浏览器原生密码显示按钮，避免与自定义眼睛图标重复 */
+.form-input::-ms-reveal,
+.form-input::-ms-clear {
+  display: none;
+}
+.form-input::-webkit-credentials-auto-fill-button,
+.form-input::-webkit-textfield-decoration-container {
+  display: none;
+}
+
 .form-input:focus {
   outline: none;
   border-color: #00a0e9;
