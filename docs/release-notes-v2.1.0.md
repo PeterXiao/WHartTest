@@ -74,6 +74,13 @@
 - 默认禁用 `xinference` 服务，降低默认资源占用。
 - 更新本地 compose 注释与开发体验文档。
 
+## ⚖️ 开源合规更新
+
+- 新增第三方组件声明文件：`WHartTest_Django/THIRD_PARTY_NOTICES.md`。
+- 后端 Docker 镜像构建新增许可证文件收集，产物路径为：`/app/third_party_licenses/`。
+- 明确纳入并保留以下组件的许可证/声明：Playwright、Pillow、Chromium headless shell、FFmpeg。
+- Django 依赖清单显式加入 `Pillow>=10.0.0`，避免隐式依赖带来的合规和运维风险。
+
 ## 📦 升级说明
 
 1. 升级后请执行数据库迁移：`python manage.py migrate`。

@@ -110,8 +110,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 从构建阶段复制虚拟环境（不包含构建工具）
 COPY --from=builder /opt/venv /opt/venv
 
+# 复制第三方许可证声明文件（用于对外分发合规）
+COPY THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
+
 # 安装 Playwright 浏览器（Chromium）
 RUN /opt/venv/bin/playwright install chromium
+
+# 收集第三方许可证文件（Playwright/Pillow/Chromium/FFmpeg）
+RUN set -eux; \
+    mkdir -p /app/third_party_licenses/python /app/third_party_licenses/playwright-browsers; \
+    cp /app/THIRD_PARTY_NOTICES.md /app/third_party_licenses/THIRD_PARTY_NOTICES.md; \
+    site_pkgs="$(/opt/venv/bin/python -c 'import site; print(next(p for p in site.getsitepackages() if p.endswith("site-packages")))')"; \
+    copy_python_licenses() { \
+      src="$1"; \
+      dst="$2"; \
+      depth="$3"; \
+      [ -d "$src" ] || return 0; \
+      mkdir -p "$dst"; \
+      find "$src" -maxdepth "$depth" -type f \( -name "LICENSE*" -o -name "COPYING*" -o -name "NOTICE*" \) -exec cp -f {} "$dst"/ \; ; \
+    }; \
+    for pattern in "playwright-*.dist-info" "pillow-*.dist-info" "Pillow-*.dist-info"; do \
+      for dir in "$site_pkgs"/$pattern; do \
+        [ -d "$dir" ] || continue; \
+        copy_python_licenses "$dir" "/app/third_party_licenses/python/$(basename "$dir")" 2; \
+      done; \
+    done; \
+    for dir in "$site_pkgs"/playwright "$site_pkgs"/PIL; do \
+      [ -d "$dir" ] || continue; \
+      copy_python_licenses "$dir" "/app/third_party_licenses/python/$(basename "$dir")" 2; \
+    done; \
+    browser_root="${PLAYWRIGHT_BROWSERS_PATH:-/root/.cache/ms-playwright}"; \
+    if [ -d "$browser_root" ]; then \
+      find "$browser_root" -maxdepth 4 -type f \( -name "LICENSE*" -o -name "COPYING*" -o -name "NOTICE*" -o -name "ABOUT" \) -exec cp --parents -f {} /app/third_party_licenses/playwright-browsers/ \; ; \
+    fi
 
 # 安装 agent-browser CLI 工具及其浏览器
 # agent-browser 是 AI Agent 专用的浏览器自动化工具
