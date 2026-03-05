@@ -28,6 +28,7 @@ def _sync_files(src_dir: str, dst_dir: str):
     os.makedirs(dst_dir, exist_ok=True)
 
     for item in os.listdir(src_dir):
+        # 跳过虚拟环境、缓存和依赖目录，避免把运行时垃圾同步进媒体目录。
         if item in EXCLUDE_PATTERNS:
             continue
         src = os.path.join(src_dir, item)
@@ -45,6 +46,7 @@ class Command(BaseCommand):
     help = '从 bundled_skills 目录同步预置 Skills（新增或更新）'
 
     def add_arguments(self, parser):
+        # 支持通过参数或环境变量指定预置 Skills 目录。
         parser.add_argument(
             '--skills-dir',
             default=os.environ.get('BUNDLED_SKILLS_DIR', '/app/bundled_skills'),
@@ -54,6 +56,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         skills_dir = options['skills_dir']
 
+        # 条件：目录不存在；动作：告警并退出；结果：部署环境可无 bundled_skills 也不中断启动流程。
         if not os.path.isdir(skills_dir):
             self.stdout.write(self.style.WARNING(
                 f'预置 Skills 目录不存在: {skills_dir}，跳过初始化'
@@ -64,11 +67,13 @@ class Command(BaseCommand):
         from projects.models import Project
 
         admin_user = User.objects.filter(is_superuser=True).order_by('id').first()
+        # 条件：无管理员用户；动作：跳过导入；结果：避免创建“无归属”Skill 记录。
         if not admin_user:
             self.stdout.write(self.style.WARNING('未找到管理员用户，跳过 Skills 初始化'))
             return
 
         project = Project.objects.order_by('id').first()
+        # 条件：系统尚无项目；动作：创建默认项目；结果：预置 Skill 有合法项目归属。
         if not project:
             project = Project.objects.create(
                 name='默认项目',
@@ -100,7 +105,7 @@ class Command(BaseCommand):
                 existing = Skill.objects.filter(name=skill_name).first()
 
                 if existing:
-                    # 更新已有 Skill 的内容和文件
+                    # 条件：Skill 已存在；动作：更新内容和文件；结果：保留 is_active 等用户运行态配置。
                     existing.description = parsed['description']
                     existing.skill_content = skill_content
                     existing.save(update_fields=['description', 'skill_content', 'updated_at'])
@@ -112,7 +117,7 @@ class Command(BaseCommand):
                     self.stdout.write(f'  更新 {skill_name}')
                     updated_count += 1
                 else:
-                    # 创建新 Skill
+                    # 条件：Skill 不存在；动作：创建记录并同步文件；结果：新增预置 Skill 生效。
                     skill = Skill.objects.create(
                         project=project,
                         creator=admin_user,
@@ -133,6 +138,7 @@ class Command(BaseCommand):
                     created_count += 1
 
             except Exception as e:
+                # 单个 Skill 导入失败不影响后续条目，记录异常后继续处理。
                 self.stdout.write(self.style.ERROR(f'  {entry} 失败: {e}'))
                 logger.exception('同步 Skill %s 失败', entry)
 

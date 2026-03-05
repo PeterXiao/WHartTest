@@ -2,7 +2,7 @@
 export * from './types'
 export * from './api'
 
-// Views
+// 视图导出
 export { default as UiAutomationView } from './views/UiAutomationView.vue'
 export { default as ModuleTree } from './views/ModuleTree.vue'
 export { default as PageList } from './views/PageList.vue'

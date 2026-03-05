@@ -1,4 +1,4 @@
-// src/services/authService.ts
+// 认证服务
 import axios from 'axios';
 import { request } from '@/utils/request';
 

@@ -1271,7 +1271,7 @@ export async function resumeAgentLoop(
                 activeStreams.value[sessionId].isComplete = true;
               }
             } catch {
-              // Ignore
+              // 忽略解析异常
             }
           }
         }
@@ -1494,7 +1494,7 @@ export async function resumeChatStream(
               onComplete?.();
             }
           } catch {
-            // Ignore parse errors
+            // 忽略解析错误
           }
         }
       }

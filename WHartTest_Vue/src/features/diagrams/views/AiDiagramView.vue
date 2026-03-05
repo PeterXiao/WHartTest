@@ -887,8 +887,8 @@ const handleToolEnd = (data: any) => {
   }
   
   // 兼容 tool_end 和 tool_result 两种格式
-  // tool_end: { tool_name, tool_output }
-  // tool_result: { tool_name, tool_output } 或 { summary: "tool_name:\n{json}\n\nother_tool: 失败 - xxx" }
+  // tool_end 结构：{ tool_name, tool_output }
+  // tool_result 结构：{ tool_name, tool_output } 或 { summary: "tool_name:\n{json}\n\nother_tool: 失败 - xxx" }
   let tool_name = '';
   let tool_output = '';
 

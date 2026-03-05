@@ -12,6 +12,7 @@ Agent Loop API 视图 (LangChain v1 重构版)
 - 支持 stream 参数控制流式/非流式输出
 - SSE 事件格式与旧版保持兼容，前端无需修改
 """
+
 import asyncio
 import base64
 import json
@@ -31,7 +32,13 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from asgiref.sync import sync_to_async
 
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain.agents import create_agent
 from wharttest_django.checkpointer import get_async_checkpointer
 
@@ -60,31 +67,47 @@ logger = logging.getLogger(__name__)
 
 # ============== 统一响应辅助函数 ==============
 
-def api_success_response(message: str, data: Any = None, code: int = 200) -> JsonResponse:
+
+
+
+def api_success_response(
+    message: str, data: Any = None, code: int = 200
+) -> JsonResponse:
     """构建统一格式的成功响应"""
-    return JsonResponse({
-        'status': 'success',
-        'code': code,
-        'message': message,
-        'data': data,
-        'errors': None
-    }, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse(
+        {
+            "status": "success",
+            "code": code,
+            "message": message,
+            "data": data,
+            "errors": None,
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
 
 
-def api_error_response(message: str, code: int = 400, errors: Any = None) -> JsonResponse:
+def api_error_response(
+    message: str, code: int = 400, errors: Any = None
+) -> JsonResponse:
     """构建统一格式的错误响应"""
     if errors is None:
-        errors = {'detail': [message]}
-    return JsonResponse({
-        'status': 'error',
-        'code': code,
-        'message': message,
-        'data': None,
-        'errors': errors
-    }, status=code, json_dumps_params={'ensure_ascii': False})
+        errors = {"detail": [message]}
+    return JsonResponse(
+        {
+            "status": "error",
+            "code": code,
+            "message": message,
+            "data": None,
+            "errors": errors,
+        },
+        status=code,
+        json_dumps_params={"ensure_ascii": False},
+    )
 
 
-_MARKDOWN_IMAGE_URL_RE = re.compile(r'!\[[^\]]*?\]\((?P<url>https?://[^)\s]+)\)', re.IGNORECASE)
+_MARKDOWN_IMAGE_URL_RE = re.compile(
+    r"!\[[^\]]*?\]\((?P<url>https?://[^)\s]+)\)", re.IGNORECASE
+)
 _PLAIN_HTTP_URL_RE = re.compile(r'(?P<url>https?://[^\s<>"\']+)', re.IGNORECASE)
 _URL_LEADING_WRAP_CHARS = "([<{\"'“‘（【《「『"
 _URL_TRAILING_WRAP_CHARS = ")]}>\"'”’）】》」』.,;!?，。；！？、"
@@ -97,7 +120,9 @@ def _get_env_int(name: str, default: int, min_value: int = 1) -> int:
     try:
         return max(min_value, int(raw))
     except ValueError:
-        logger.warning("AgentLoopStreamAPI: Invalid int env %s=%s, fallback=%s", name, raw, default)
+        logger.warning(
+            "AgentLoopStreamAPI: Invalid int env %s=%s, fallback=%s", name, raw, default
+        )
         return default
 
 
@@ -108,7 +133,12 @@ def _get_env_float(name: str, default: float, min_value: float = 0.1) -> float:
     try:
         return max(min_value, float(raw))
     except ValueError:
-        logger.warning("AgentLoopStreamAPI: Invalid float env %s=%s, fallback=%s", name, raw, default)
+        logger.warning(
+            "AgentLoopStreamAPI: Invalid float env %s=%s, fallback=%s",
+            name,
+            raw,
+            default,
+        )
         return default
 
 
@@ -117,10 +147,18 @@ _LINKED_IMAGE_URL_ALLOWLIST = {
     for host in os.getenv("AGENT_LOOP_IMAGE_URL_ALLOWLIST", "*").split(",")
     if host.strip()
 }
-_MAX_LINKED_IMAGES_PER_REQUEST = _get_env_int("AGENT_LOOP_MAX_LINKED_IMAGES", 3, min_value=1)
-_MAX_LINKED_IMAGE_BYTES = _get_env_int("AGENT_LOOP_MAX_LINKED_IMAGE_BYTES", 5 * 1024 * 1024, min_value=1024)
-_LINKED_IMAGE_FETCH_TIMEOUT = _get_env_float("AGENT_LOOP_LINKED_IMAGE_FETCH_TIMEOUT", 8.0, min_value=1.0)
-_MAX_SAFE_TOOL_MESSAGE_CHARS = _get_env_int("AGENT_LOOP_MAX_SAFE_TOOL_MESSAGE_CHARS", 20000, min_value=1000)
+_MAX_LINKED_IMAGES_PER_REQUEST = _get_env_int(
+    "AGENT_LOOP_MAX_LINKED_IMAGES", 3, min_value=1
+)
+_MAX_LINKED_IMAGE_BYTES = _get_env_int(
+    "AGENT_LOOP_MAX_LINKED_IMAGE_BYTES", 5 * 1024 * 1024, min_value=1024
+)
+_LINKED_IMAGE_FETCH_TIMEOUT = _get_env_float(
+    "AGENT_LOOP_LINKED_IMAGE_FETCH_TIMEOUT", 8.0, min_value=1.0
+)
+_MAX_SAFE_TOOL_MESSAGE_CHARS = _get_env_int(
+    "AGENT_LOOP_MAX_SAFE_TOOL_MESSAGE_CHARS", 20000, min_value=1000
+)
 
 
 def _extract_linked_image_urls(text: str) -> List[str]:
@@ -175,12 +213,21 @@ async def _download_linked_image_as_data_url(url: str) -> Optional[str]:
         )
         return None
 
-    timeout = httpx.Timeout(_LINKED_IMAGE_FETCH_TIMEOUT, connect=_LINKED_IMAGE_FETCH_TIMEOUT)
+    timeout = httpx.Timeout(
+        _LINKED_IMAGE_FETCH_TIMEOUT, connect=_LINKED_IMAGE_FETCH_TIMEOUT
+    )
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            async with client.stream("GET", url, headers={"Accept": "image/*"}) as response:
+            async with client.stream(
+                "GET", url, headers={"Accept": "image/*"}
+            ) as response:
                 response.raise_for_status()
-                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                content_type = (
+                    (response.headers.get("Content-Type") or "")
+                    .split(";")[0]
+                    .strip()
+                    .lower()
+                )
                 if not content_type.startswith("image/"):
                     logger.warning(
                         "AgentLoopStreamAPI: Skip linked URL with non-image content-type. url=%s, content_type=%s",
@@ -203,13 +250,18 @@ async def _download_linked_image_as_data_url(url: str) -> Optional[str]:
                     data.extend(chunk)
 
                 if not data:
-                    logger.warning("AgentLoopStreamAPI: Skip empty linked image response. url=%s", url)
+                    logger.warning(
+                        "AgentLoopStreamAPI: Skip empty linked image response. url=%s",
+                        url,
+                    )
                     return None
 
                 encoded = base64.b64encode(bytes(data)).decode("utf-8")
                 return f"data:{content_type};base64,{encoded}"
     except Exception as e:
-        logger.warning("AgentLoopStreamAPI: Failed to fetch linked image url=%s, error=%s", url, e)
+        logger.warning(
+            "AgentLoopStreamAPI: Failed to fetch linked image url=%s, error=%s", url, e
+        )
         return None
 
 
@@ -237,7 +289,11 @@ async def _collect_linked_image_data_urls(
     data_urls: List[str] = []
     for url, result in zip(limited_urls, results):
         if isinstance(result, Exception):
-            logger.warning("AgentLoopStreamAPI: Linked image download task failed. url=%s, error=%s", url, result)
+            logger.warning(
+                "AgentLoopStreamAPI: Linked image download task failed. url=%s, error=%s",
+                url,
+                result,
+            )
             continue
         if result:
             data_urls.append(result)
@@ -248,28 +304,28 @@ async def _collect_linked_image_data_urls(
 def process_mcp_tool_output(content: Any) -> tuple:
     """
     处理 MCP 工具返回的内容，提取实际数据并生成摘要
-    
+
     Args:
         content: 工具返回的原始内容
-        
+
     Returns:
         tuple: (processed_content, summary)
     """
     # 处理 MCP 工具返回的列表格式，提取 text 内容
     if isinstance(content, list) and len(content) > 0:
         first_item = content[0]
-        if isinstance(first_item, dict) and first_item.get('type') == 'text':
-            text_content = first_item.get('text')
+        if isinstance(first_item, dict) and first_item.get("type") == "text":
+            text_content = first_item.get("text")
             if text_content is not None:
                 content = text_content
             # text 为 None 或空时保留原始列表格式
-    
+
     # 确保 content 可序列化
     if content is None:
-        content = ''
+        content = ""
     elif not isinstance(content, (str, dict, list, int, float, bool)):
         content = str(content)
-    
+
     # 生成摘要
     if isinstance(content, str):
         summary = content[:200]
@@ -278,7 +334,7 @@ def process_mcp_tool_output(content: Any) -> tuple:
             summary = json.dumps(content, ensure_ascii=False)[:200]
         except (TypeError, ValueError):
             summary = str(content)[:200]
-    
+
     return content, summary
 
 
@@ -300,11 +356,13 @@ def _build_sanitized_messages(messages: List[Any]) -> tuple[List[Any], int]:
     def _flush_pending() -> None:
         nonlocal fix_count
         for tc_id in pending_call_ids:
-            result.append(ToolMessage(
-                content="[Tool execution was interrupted]",
-                tool_call_id=tc_id,
-                name=pending_call_names.get(tc_id, "unknown"),
-            ))
+            result.append(
+                ToolMessage(
+                    content="[Tool execution was interrupted]",
+                    tool_call_id=tc_id,
+                    name=pending_call_names.get(tc_id, "unknown"),
+                )
+            )
             fix_count += 1
         pending_call_ids.clear()
         pending_call_names.clear()
@@ -320,31 +378,40 @@ def _build_sanitized_messages(messages: List[Any]) -> tuple[List[Any], int]:
         return False
 
     for msg in messages:
-        # AIMessage with tool_calls
+        # 带 tool_calls 的 AIMessage
         if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
             _flush_pending()
             result.append(msg)
 
             for tc in msg.tool_calls:
-                tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
-                tc_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
+                tc_id = (
+                    tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                )
+                tc_name = (
+                    tc.get("name")
+                    if isinstance(tc, dict)
+                    else getattr(tc, "name", None)
+                )
                 if tc_id:
                     tc_id = str(tc_id)
                     pending_call_ids.append(tc_id)
                     pending_call_names[tc_id] = tc_name or "unknown"
             continue
 
-        # ToolMessage
+        # ToolMessage 消息
         if isinstance(msg, ToolMessage):
             tc_id = str(getattr(msg, "tool_call_id", "") or "")
             if tc_id in pending_call_ids:
                 pending_call_ids.remove(tc_id)
                 if _is_tool_content_problematic(msg):
-                    result.append(ToolMessage(
-                        content="[Tool output removed: content was invalid or too large]",
-                        tool_call_id=tc_id,
-                        name=getattr(msg, "name", None) or pending_call_names.get(tc_id, "unknown"),
-                    ))
+                    result.append(
+                        ToolMessage(
+                            content="[Tool output removed: content was invalid or too large]",
+                            tool_call_id=tc_id,
+                            name=getattr(msg, "name", None)
+                            or pending_call_names.get(tc_id, "unknown"),
+                        )
+                    )
                     fix_count += 1
                 else:
                     result.append(msg)
@@ -375,7 +442,11 @@ async def _sanitize_history_before_model_call(
         logger.warning("%s: Failed to load state for sanitize: %s", log_prefix, e)
         return {"removed_count": 0, "sanitized": False}
 
-    values = current_state.values if hasattr(current_state, "values") and current_state.values else {}
+    values = (
+        current_state.values
+        if hasattr(current_state, "values") and current_state.values
+        else {}
+    )
     messages = values.get("messages", []) if isinstance(values, dict) else []
     if not messages:
         return {"removed_count": 0, "sanitized": False}
@@ -400,11 +471,16 @@ async def _sanitize_history_before_model_call(
             if as_node is None:
                 await agent.aupdate_state(invoke_config, {"messages": update_payload})
             else:
-                await agent.aupdate_state(invoke_config, {"messages": update_payload}, as_node=as_node)
+                await agent.aupdate_state(
+                    invoke_config, {"messages": update_payload}, as_node=as_node
+                )
             success = True
             logger.info(
                 "%s: Sanitized history via REMOVE_ALL, fixed %d issues, %d clean messages (as_node=%s)",
-                log_prefix, fix_count, len(clean_msgs), as_node or "auto",
+                log_prefix,
+                fix_count,
+                len(clean_msgs),
+                as_node or "auto",
             )
             break
         except Exception as e:
@@ -413,14 +489,19 @@ async def _sanitize_history_before_model_call(
     if not success:
         logger.error(
             "%s: Failed to sanitize history. fix_count=%d, available_nodes=%s, error=%s",
-            log_prefix, fix_count, available_nodes, last_error,
+            log_prefix,
+            fix_count,
+            available_nodes,
+            last_error,
         )
         return {"removed_count": 0, "sanitized": False}
 
     return {"removed_count": fix_count, "sanitized": True}
 
 
-def calculate_context_tokens(messages: List[Any], model_name: str = "gpt-4o") -> tuple[int, int, int]:
+def calculate_context_tokens(
+    messages: List[Any], model_name: str = "gpt-4o"
+) -> tuple[int, int, int]:
     """
     计算当前上下文 Token
 
@@ -429,11 +510,13 @@ def calculate_context_tokens(messages: List[Any], model_name: str = "gpt-4o") ->
     """
     # 1) 优先使用 usage_metadata（最准确）
     for msg in reversed(messages):
-        if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
+        if hasattr(msg, "usage_metadata") and msg.usage_metadata:
             usage = msg.usage_metadata
-            input_tokens = usage.get('input_tokens', 0) or 0
-            output_tokens = usage.get('output_tokens', 0) or 0
-            total_tokens = usage.get('total_tokens', 0) or (input_tokens + output_tokens)
+            input_tokens = usage.get("input_tokens", 0) or 0
+            output_tokens = usage.get("output_tokens", 0) or 0
+            total_tokens = usage.get("total_tokens", 0) or (
+                input_tokens + output_tokens
+            )
 
             if total_tokens > 0:
                 return input_tokens, output_tokens, total_tokens
@@ -441,7 +524,7 @@ def calculate_context_tokens(messages: List[Any], model_name: str = "gpt-4o") ->
     # 2) 回退到内容估算（避免 context_update 始终为 0）
     content_tokens = 0
     for msg in messages:
-        if hasattr(msg, 'content') and msg.content:
+        if hasattr(msg, "content") and msg.content:
             content = msg.content if isinstance(msg.content, str) else str(msg.content)
             content_tokens += context_checker.count_tokens(content, model_name)
 
@@ -449,7 +532,9 @@ def calculate_context_tokens(messages: List[Any], model_name: str = "gpt-4o") ->
     return 0, 0, estimated_total
 
 
-def _is_unreliable_default_detected_limit(model_name: str, detected_limit: Optional[int]) -> bool:
+def _is_unreliable_default_detected_limit(
+    model_name: str, detected_limit: Optional[int]
+) -> bool:
     """
     判断检测上限是否仅来自未知模型的默认回退值（如 128000）。
     该场景下应优先信任用户配置的 context_limit。
@@ -471,24 +556,36 @@ def _is_unreliable_default_detected_limit(model_name: str, detected_limit: Optio
     return True
 
 
-def resolve_runtime_context_limit(config_context_limit: Optional[int], llm, model_name: str) -> int:
+def resolve_runtime_context_limit(
+    config_context_limit: Optional[int], llm, model_name: str
+) -> int:
     """
     运行时上下文限制（与 middleware_config 保持一致，用户优先）：
     - 用户配置存在时：直接使用 config
     - 无 config 时：profile > 可靠 detected > 默认值
     """
-    config_limit = config_context_limit if isinstance(config_context_limit, int) and config_context_limit > 0 else None
-    detected_limit = get_context_limit_from_llm(llm, fallback_model_name=model_name) if llm is not None else None
+    config_limit = (
+        config_context_limit
+        if isinstance(config_context_limit, int) and config_context_limit > 0
+        else None
+    )
+    detected_limit = (
+        get_context_limit_from_llm(llm, fallback_model_name=model_name)
+        if llm is not None
+        else None
+    )
 
     profile_limit = None
     if llm is not None:
-        profile = getattr(llm, 'profile', None)
+        profile = getattr(llm, "profile", None)
         if isinstance(profile, dict):
-            max_input_tokens = profile.get('max_input_tokens')
+            max_input_tokens = profile.get("max_input_tokens")
             if isinstance(max_input_tokens, int) and max_input_tokens > 0:
                 profile_limit = max_input_tokens
 
-    unreliable_detected_limit = _is_unreliable_default_detected_limit(model_name, detected_limit)
+    unreliable_detected_limit = _is_unreliable_default_detected_limit(
+        model_name, detected_limit
+    )
 
     if config_limit:
         return config_limit
@@ -496,13 +593,17 @@ def resolve_runtime_context_limit(config_context_limit: Optional[int], llm, mode
     if profile_limit:
         return profile_limit
 
-    if isinstance(detected_limit, int) and detected_limit > 0 and not unreliable_detected_limit:
+    if (
+        isinstance(detected_limit, int)
+        and detected_limit > 0
+        and not unreliable_detected_limit
+    ):
         return detected_limit
 
     return 128000
 
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_exempt, name="dispatch")
 class AgentLoopStreamAPIView(View):
     """
     Agent Loop 聊天 API (LangChain v1 重构版)
@@ -520,16 +621,19 @@ class AgentLoopStreamAPIView(View):
     # 最大步骤数（用于前端显示）
     MAX_STEPS = 500
 
-    def _update_session_token_usage(self, session_id: str, input_tokens: int, output_tokens: int):
+    def _update_session_token_usage(
+        self, session_id: str, input_tokens: int, output_tokens: int
+    ):
         """更新会话的 Token 使用统计"""
         try:
             from django.db.models import F
             from django.utils import timezone
+
             ChatSession.objects.filter(session_id=session_id).update(
-                total_input_tokens=F('total_input_tokens') + input_tokens,
-                total_output_tokens=F('total_output_tokens') + output_tokens,
-                total_tokens=F('total_tokens') + input_tokens + output_tokens,
-                request_count=F('request_count') + 1,
+                total_input_tokens=F("total_input_tokens") + input_tokens,
+                total_output_tokens=F("total_output_tokens") + output_tokens,
+                total_tokens=F("total_tokens") + input_tokens + output_tokens,
+                request_count=F("request_count") + 1,
                 updated_at=timezone.now(),
             )
         except Exception as e:
@@ -537,11 +641,11 @@ class AgentLoopStreamAPIView(View):
 
     async def authenticate_request(self, request):
         """JWT 认证"""
-        auth_header = request.META.get('HTTP_AUTHORIZATION')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            raise AuthenticationFailed('Authentication credentials were not provided.')
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise AuthenticationFailed("Authentication credentials were not provided.")
 
-        token = auth_header.split(' ')[1]
+        token = auth_header.split(" ")[1]
         jwt_auth = JWTAuthentication()
 
         try:
@@ -549,7 +653,7 @@ class AgentLoopStreamAPIView(View):
             user = await sync_to_async(jwt_auth.get_user)(validated_token)
             return user
         except Exception as e:
-            raise AuthenticationFailed(f'Invalid token: {str(e)}')
+            raise AuthenticationFailed(f"Invalid token: {str(e)}")
 
     async def _create_stream_generator(
         self,
@@ -581,21 +685,29 @@ class AgentLoopStreamAPIView(View):
             context_limit = active_config.context_limit or 128000
             model_name = active_config.name or "gpt-4o"
         except LLMConfig.DoesNotExist:
-            yield create_sse_data({'type': 'error', 'message': 'No active LLM configuration found'})
+            yield create_sse_data(
+                {"type": "error", "message": "No active LLM configuration found"}
+            )
             return
 
         # 2. 验证多模态支持
         if image_base64 and not active_config.supports_vision:
-            yield create_sse_data({
-                'type': 'error',
-                'message': f'模型 {active_config.name} 不支持图片输入'
-            })
+            yield create_sse_data(
+                {
+                    "type": "error",
+                    "message": f"模型 {active_config.name} 不支持图片输入",
+                }
+            )
             return
 
         try:
             # 3. 初始化 LLM
-            llm = await sync_to_async(create_llm_instance)(active_config, temperature=0.7)
-            context_limit = resolve_runtime_context_limit(active_config.context_limit, llm, model_name)
+            llm = await sync_to_async(create_llm_instance)(
+                active_config, temperature=0.7
+            )
+            context_limit = resolve_runtime_context_limit(
+                active_config.context_limit, llm, model_name
+            )
 
             # 4. 加载 MCP 工具
             tools: List[Any] = []
@@ -609,7 +721,9 @@ class AgentLoopStreamAPIView(View):
                         key = cfg.name or f"remote_{cfg.id}"
                         client_config[key] = {
                             "url": cfg.url,
-                            "transport": (cfg.transport or "streamable_http").replace('-', '_'),
+                            "transport": (cfg.transport or "streamable_http").replace(
+                                "-", "_"
+                            ),
                         }
                         if cfg.headers:
                             client_config[key]["headers"] = cfg.headers
@@ -619,40 +733,55 @@ class AgentLoopStreamAPIView(View):
                             client_config,
                             user_id=str(request.user.id),
                             project_id=str(project_id),
-                            session_id=session_id
+                            session_id=session_id,
                         )
                         tools.extend(mcp_tools)
-                        logger.info(f"AgentLoopStreamAPI: Loaded {len(mcp_tools)} MCP tools")
-                        yield create_sse_data({
-                            'type': 'info',
-                            'message': f'已加载 {len(mcp_tools)} 个工具'
-                        })
+                        logger.info(
+                            f"AgentLoopStreamAPI: Loaded {len(mcp_tools)} MCP tools"
+                        )
+                        yield create_sse_data(
+                            {
+                                "type": "info",
+                                "message": f"已加载 {len(mcp_tools)} 个工具",
+                            }
+                        )
             except Exception as e:
-                logger.error(f"AgentLoopStreamAPI: MCP tools loading failed: {e}", exc_info=True)
-                yield create_sse_data({
-                    'type': 'warning',
-                    'message': f'MCP 工具加载失败: {str(e)}'
-                })
+                logger.error(
+                    f"AgentLoopStreamAPI: MCP tools loading failed: {e}", exc_info=True
+                )
+                yield create_sse_data(
+                    {"type": "warning", "message": f"MCP 工具加载失败: {str(e)}"}
+                )
 
             # 5. 添加知识库工具
-            logger.info(f"AgentLoopStreamAPI: 检查知识库工具 - knowledge_base_id={knowledge_base_id}, use_knowledge_base={use_knowledge_base}")
+            logger.info(
+                f"AgentLoopStreamAPI: 检查知识库工具 - knowledge_base_id={knowledge_base_id}, use_knowledge_base={use_knowledge_base}"
+            )
             if knowledge_base_id and use_knowledge_base:
                 try:
                     from knowledge.langgraph_integration import create_knowledge_tool
+
                     logger.info(f"AgentLoopStreamAPI: 正在创建知识库工具...")
                     kb_tool = await sync_to_async(create_knowledge_tool)(
-                        knowledge_base_id=knowledge_base_id,
-                        user=request.user
+                        knowledge_base_id=knowledge_base_id, user=request.user
                     )
                     tools.append(kb_tool)
-                    logger.info(f"AgentLoopStreamAPI: ✅ 知识库工具已添加: {kb_tool.name}")
+                    logger.info(
+                        f"AgentLoopStreamAPI: ✅ 知识库工具已添加: {kb_tool.name}"
+                    )
                 except Exception as e:
-                    logger.warning(f"AgentLoopStreamAPI: ❌ Knowledge tool creation failed: {e}", exc_info=True)
+                    logger.warning(
+                        f"AgentLoopStreamAPI: ❌ Knowledge tool creation failed: {e}",
+                        exc_info=True,
+                    )
             else:
-                logger.info(f"AgentLoopStreamAPI: ⚠️ 跳过知识库工具 (knowledge_base_id={knowledge_base_id}, use_knowledge_base={use_knowledge_base})")
+                logger.info(
+                    f"AgentLoopStreamAPI: ⚠️ 跳过知识库工具 (knowledge_base_id={knowledge_base_id}, use_knowledge_base={use_knowledge_base})"
+                )
 
             # 6. 添加内置工具（Playwright 脚本管理等）
             from orchestrator_integration.builtin_tools import get_builtin_tools
+
             builtin_tools = get_builtin_tools(
                 user_id=request.user.id,
                 project_id=int(project_id),
@@ -672,17 +801,21 @@ class AgentLoopStreamAPIView(View):
                 except UserPrompt.DoesNotExist:
                     pass
 
-            chat_session, created = await sync_to_async(ChatSession.objects.get_or_create)(
+            chat_session, created = await sync_to_async(
+                ChatSession.objects.get_or_create
+            )(
                 session_id=session_id,
                 defaults={
-                    'user': request.user,
-                    'project': project,
-                    'prompt': prompt_obj,
-                    'title': f"新对话 - {user_message[:30]}"
-                }
+                    "user": request.user,
+                    "project": project,
+                    "prompt": prompt_obj,
+                    "title": f"新对话 - {user_message[:30]}",
+                },
             )
             if created:
-                logger.info(f"AgentLoopStreamAPI: Created new ChatSession: {session_id}")
+                logger.info(
+                    f"AgentLoopStreamAPI: Created new ChatSession: {session_id}"
+                )
 
             # 8. 获取系统提示词
             effective_prompt, prompt_source = await get_effective_system_prompt_async(
@@ -691,7 +824,9 @@ class AgentLoopStreamAPIView(View):
 
             # 8.1 如果需要生成脚本，追加脚本生成指令
             if generate_playwright_script:
-                effective_prompt = (effective_prompt or '') + PLAYWRIGHT_SCRIPT_INSTRUCTION
+                effective_prompt = (
+                    effective_prompt or ""
+                ) + PLAYWRIGHT_SCRIPT_INSTRUCTION
                 logger.info(f"AgentLoopStreamAPI: 已追加脚本生成指令")
 
             # 9. 构建用户消息（支持多模态：上传图片 + 链接图片）
@@ -718,21 +853,31 @@ class AgentLoopStreamAPIView(View):
                         len(linked_image_urls),
                         active_config.name,
                     )
-            elif "http://" in user_message.lower() or "https://" in user_message.lower():
-                logger.warning("AgentLoopStreamAPI: Message contains URL text but extractor found 0 valid URLs")
+            elif (
+                "http://" in user_message.lower() or "https://" in user_message.lower()
+            ):
+                logger.warning(
+                    "AgentLoopStreamAPI: Message contains URL text but extractor found 0 valid URLs"
+                )
 
             if image_base64 or linked_image_data_urls:
                 human_message_content = [{"type": "text", "text": user_message}]
                 for data_url in linked_image_data_urls:
-                    human_message_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": data_url},
-                    })
+                    human_message_content.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_url},
+                        }
+                    )
                 if image_base64:
-                    human_message_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    })
+                    human_message_content.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            },
+                        }
+                    )
             else:
                 human_message_content = user_message
             user_msg = HumanMessage(content=human_message_content)
@@ -741,21 +886,28 @@ class AgentLoopStreamAPIView(View):
             tool_names = [t.name for t in tools] if tools else None
 
             # 11. 发送开始信号
-            yield create_sse_data({
-                'type': 'start',
-                'session_id': session_id,
-                'thread_id': thread_id,
-                'project_id': project_id,
-                'mode': 'agent_loop',
-                'created_at': chat_session.created_at.isoformat() if chat_session and chat_session.created_at else None
-            })
+            yield create_sse_data(
+                {
+                    "type": "start",
+                    "session_id": session_id,
+                    "thread_id": thread_id,
+                    "project_id": project_id,
+                    "mode": "agent_loop",
+                    "created_at": chat_session.created_at.isoformat()
+                    if chat_session and chat_session.created_at
+                    else None,
+                }
+            )
 
             # 12. 创建 Agent（LangChain v1 统一路径）
             async with get_async_checkpointer() as checkpointer:
                 # 获取中间件（需要同步到异步，因为内部有 ORM 查询）
                 middleware = await sync_to_async(get_middleware_from_config)(
-                    active_config, llm, user=request.user,
-                    session_id=session_id, all_tool_names=tool_names
+                    active_config,
+                    llm,
+                    user=request.user,
+                    session_id=session_id,
+                    all_tool_names=tool_names,
                 )
 
                 agent = create_agent(
@@ -765,12 +917,14 @@ class AgentLoopStreamAPIView(View):
                     checkpointer=checkpointer,
                     middleware=middleware,
                 )
-                logger.info(f"AgentLoopStreamAPI: Agent created with {len(tools)} tools")
+                logger.info(
+                    f"AgentLoopStreamAPI: Agent created with {len(tools)} tools"
+                )
 
                 # 13. 配置调用参数
                 invoke_config = {
                     "configurable": {"thread_id": thread_id},
-                    "recursion_limit": 1000  # 支持约500次工具调用
+                    "recursion_limit": 1000,  # 支持约500次工具调用
                 }
                 input_messages = {"messages": [user_msg]}
 
@@ -792,28 +946,34 @@ class AgentLoopStreamAPIView(View):
 
                 try:
                     async for stream_mode, chunk in agent.astream(
-                        input_messages,
-                        config=invoke_config,
-                        stream_mode=stream_modes
+                        input_messages, config=invoke_config, stream_mode=stream_modes
                     ):
                         # 检查用户停止信号
                         if should_stop(session_id):
                             user_stopped = True
                             clear_stop_signal(session_id)
-                            logger.info(f"AgentLoopStreamAPI: Stop signal received at step {step_count}")
-                            yield create_sse_data({
-                                'type': 'stopped',
-                                'message': '已停止生成',
-                                'step': step_count
-                            })
+                            logger.info(
+                                f"AgentLoopStreamAPI: Stop signal received at step {step_count}"
+                            )
+                            yield create_sse_data(
+                                {
+                                    "type": "stopped",
+                                    "message": "已停止生成",
+                                    "step": step_count,
+                                }
+                            )
                             break
 
                         if stream_mode == "updates":
                             # 检查中断事件 (HITL)
                             if isinstance(chunk, dict) and "__interrupt__" in chunk:
                                 interrupt_info = chunk["__interrupt__"]
-                                logger.info(f"AgentLoopStreamAPI: HITL interrupt detected: {interrupt_info}")
-                                logger.info(f"AgentLoopStreamAPI: interrupt_info type: {type(interrupt_info)}")
+                                logger.info(
+                                    f"AgentLoopStreamAPI: HITL interrupt detected: {interrupt_info}"
+                                )
+                                logger.info(
+                                    f"AgentLoopStreamAPI: interrupt_info type: {type(interrupt_info)}"
+                                )
 
                                 action_requests = []
                                 interrupt_id = None
@@ -824,111 +984,192 @@ class AgentLoopStreamAPIView(View):
                                     interrupts_list = [interrupt_info]
 
                                 for intr in interrupts_list:
-                                    logger.info(f"AgentLoopStreamAPI: Processing interrupt: type={type(intr)}, dir={dir(intr)}")
-                                    logger.info(f"AgentLoopStreamAPI: interrupt repr: {repr(intr)}")
+                                    logger.info(
+                                        f"AgentLoopStreamAPI: Processing interrupt: type={type(intr)}, dir={dir(intr)}"
+                                    )
+                                    logger.info(
+                                        f"AgentLoopStreamAPI: interrupt repr: {repr(intr)}"
+                                    )
 
-                                    if hasattr(intr, 'id'):
+                                    if hasattr(intr, "id"):
                                         interrupt_id = intr.id
-                                        logger.info(f"AgentLoopStreamAPI: interrupt_id from attr: {interrupt_id}")
-                                    elif isinstance(intr, dict) and 'id' in intr:
-                                        interrupt_id = intr['id']
-                                        logger.info(f"AgentLoopStreamAPI: interrupt_id from dict: {interrupt_id}")
+                                        logger.info(
+                                            f"AgentLoopStreamAPI: interrupt_id from attr: {interrupt_id}"
+                                        )
+                                    elif isinstance(intr, dict) and "id" in intr:
+                                        interrupt_id = intr["id"]
+                                        logger.info(
+                                            f"AgentLoopStreamAPI: interrupt_id from dict: {interrupt_id}"
+                                        )
 
-                                    intr_value = getattr(intr, 'value', intr) if hasattr(intr, 'value') else intr
-                                    logger.info(f"AgentLoopStreamAPI: intr_value type={type(intr_value)}, value={intr_value}")
+                                    intr_value = (
+                                        getattr(intr, "value", intr)
+                                        if hasattr(intr, "value")
+                                        else intr
+                                    )
+                                    logger.info(
+                                        f"AgentLoopStreamAPI: intr_value type={type(intr_value)}, value={intr_value}"
+                                    )
 
                                     # 尝试多种方式获取 action_requests
                                     ars = []
                                     if isinstance(intr_value, dict):
-                                        ars = intr_value.get('action_requests', [])
-                                        logger.info(f"AgentLoopStreamAPI: action_requests from dict: {ars}")
-                                    elif hasattr(intr_value, 'action_requests'):
+                                        ars = intr_value.get("action_requests", [])
+                                        logger.info(
+                                            f"AgentLoopStreamAPI: action_requests from dict: {ars}"
+                                        )
+                                    elif hasattr(intr_value, "action_requests"):
                                         ars = intr_value.action_requests
-                                        logger.info(f"AgentLoopStreamAPI: action_requests from attr: {ars}")
+                                        logger.info(
+                                            f"AgentLoopStreamAPI: action_requests from attr: {ars}"
+                                        )
 
                                     # 如果还是空的，尝试从 intr 本身获取
-                                    if not ars and hasattr(intr, 'action_requests'):
+                                    if not ars and hasattr(intr, "action_requests"):
                                         ars = intr.action_requests
-                                        logger.info(f"AgentLoopStreamAPI: action_requests from intr attr: {ars}")
+                                        logger.info(
+                                            f"AgentLoopStreamAPI: action_requests from intr attr: {ars}"
+                                        )
 
-                                    logger.info(f"AgentLoopStreamAPI: Found {len(ars)} action_requests: {ars}")
+                                    logger.info(
+                                        f"AgentLoopStreamAPI: Found {len(ars)} action_requests: {ars}"
+                                    )
 
                                     for ar in ars:
                                         if isinstance(ar, dict):
-                                            action_requests.append({
-                                                'name': ar.get('name', ar.get('action_name', 'unknown')),
-                                                'args': ar.get('arguments', ar.get('args', {})),
-                                                'description': ar.get('description', ''),
-                                            })
+                                            action_requests.append(
+                                                {
+                                                    "name": ar.get(
+                                                        "name",
+                                                        ar.get(
+                                                            "action_name", "unknown"
+                                                        ),
+                                                    ),
+                                                    "args": ar.get(
+                                                        "arguments", ar.get("args", {})
+                                                    ),
+                                                    "description": ar.get(
+                                                        "description", ""
+                                                    ),
+                                                }
+                                            )
                                         else:
-                                            action_requests.append({
-                                                'name': getattr(ar, 'name', 'unknown'),
-                                                'args': getattr(ar, 'arguments', getattr(ar, 'args', {})),
-                                                'description': getattr(ar, 'description', ''),
-                                            })
+                                            action_requests.append(
+                                                {
+                                                    "name": getattr(
+                                                        ar, "name", "unknown"
+                                                    ),
+                                                    "args": getattr(
+                                                        ar,
+                                                        "arguments",
+                                                        getattr(ar, "args", {}),
+                                                    ),
+                                                    "description": getattr(
+                                                        ar, "description", ""
+                                                    ),
+                                                }
+                                            )
 
                                 if action_requests:
                                     # 获取用户工具偏好，为 always_reject 的工具添加 auto_reject 标记
-                                    user_approvals = await sync_to_async(get_user_tool_approvals)(request.user, session_id)
+                                    user_approvals = await sync_to_async(
+                                        get_user_tool_approvals
+                                    )(request.user, session_id)
                                     for ar in action_requests:
-                                        tool_name = ar.get('name', '')
-                                        if user_approvals.get(tool_name) == 'always_reject':
-                                            ar['auto_reject'] = True
-                                            logger.info(f"AgentLoopStreamAPI: Tool {tool_name} marked as auto_reject")
+                                        tool_name = ar.get("name", "")
+                                        if (
+                                            user_approvals.get(tool_name)
+                                            == "always_reject"
+                                        ):
+                                            ar["auto_reject"] = True
+                                            logger.info(
+                                                f"AgentLoopStreamAPI: Tool {tool_name} marked as auto_reject"
+                                            )
 
                                     interrupt_detected = True
-                                    yield create_sse_data({
-                                        'type': 'interrupt',
-                                        'interrupt_id': interrupt_id or str(id(interrupt_info)),
-                                        'action_requests': action_requests,
-                                        'session_id': session_id,
-                                        'thread_id': thread_id,
-                                    })
-                                    logger.info(f"AgentLoopStreamAPI: Sent interrupt with {len(action_requests)} actions")
+                                    yield create_sse_data(
+                                        {
+                                            "type": "interrupt",
+                                            "interrupt_id": interrupt_id
+                                            or str(id(interrupt_info)),
+                                            "action_requests": action_requests,
+                                            "session_id": session_id,
+                                            "thread_id": thread_id,
+                                        }
+                                    )
+                                    logger.info(
+                                        f"AgentLoopStreamAPI: Sent interrupt with {len(action_requests)} actions"
+                                    )
 
                             # 检测工具调用开始（用于生成 step_start 事件）
                             elif isinstance(chunk, dict):
                                 for node_name, node_output in chunk.items():
-                                    if node_name == "agent" and isinstance(node_output, dict):
+                                    if node_name == "agent" and isinstance(
+                                        node_output, dict
+                                    ):
                                         messages = node_output.get("messages", [])
                                         for msg in messages:
-                                            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                            if (
+                                                hasattr(msg, "tool_calls")
+                                                and msg.tool_calls
+                                            ):
                                                 # 新的工具调用 -> 新步骤开始
                                                 step_count += 1
                                                 current_tool_calls = msg.tool_calls
-                                                tool_names_in_step = [tc.get('name', 'unknown') if isinstance(tc, dict) else getattr(tc, 'name', 'unknown') for tc in current_tool_calls]
-                                                yield create_sse_data({
-                                                    'type': 'step_start',
-                                                    'step': step_count,
-                                                    'max_steps': self.MAX_STEPS,
-                                                    'tools': tool_names_in_step
-                                                })
-                                                logger.info(f"AgentLoopStreamAPI: Step {step_count} started with tools: {tool_names_in_step}")
+                                                tool_names_in_step = [
+                                                    tc.get("name", "unknown")
+                                                    if isinstance(tc, dict)
+                                                    else getattr(tc, "name", "unknown")
+                                                    for tc in current_tool_calls
+                                                ]
+                                                yield create_sse_data(
+                                                    {
+                                                        "type": "step_start",
+                                                        "step": step_count,
+                                                        "max_steps": self.MAX_STEPS,
+                                                        "tools": tool_names_in_step,
+                                                    }
+                                                )
+                                                logger.info(
+                                                    f"AgentLoopStreamAPI: Step {step_count} started with tools: {tool_names_in_step}"
+                                                )
 
-                                    elif node_name == "tools" and isinstance(node_output, dict):
+                                    elif node_name == "tools" and isinstance(
+                                        node_output, dict
+                                    ):
                                         # 工具执行完成
                                         tool_messages = node_output.get("messages", [])
                                         for tool_msg in tool_messages:
-                                            if hasattr(tool_msg, 'content'):
+                                            if hasattr(tool_msg, "content"):
                                                 content = tool_msg.content
-                                                tool_name = getattr(tool_msg, 'name', None) or getattr(tool_msg, 'tool_name', 'unknown')
-                                                
+                                                tool_name = getattr(
+                                                    tool_msg, "name", None
+                                                ) or getattr(
+                                                    tool_msg, "tool_name", "unknown"
+                                                )
+
                                                 # 使用辅助函数处理 MCP 工具输出
-                                                content, summary = process_mcp_tool_output(content)
-                                                
-                                                yield create_sse_data({
-                                                    'type': 'tool_result',
-                                                    'tool_name': tool_name,
-                                                    'tool_output': content,
-                                                    'summary': summary,
-                                                    'step': step_count
-                                                })
+                                                content, summary = (
+                                                    process_mcp_tool_output(content)
+                                                )
+
+                                                yield create_sse_data(
+                                                    {
+                                                        "type": "tool_result",
+                                                        "tool_name": tool_name,
+                                                        "tool_output": content,
+                                                        "summary": summary,
+                                                        "step": step_count,
+                                                    }
+                                                )
                                         # 步骤完成
                                         if step_count > 0:
-                                            yield create_sse_data({
-                                                'type': 'step_complete',
-                                                'step': step_count
-                                            })
+                                            yield create_sse_data(
+                                                {
+                                                    "type": "step_complete",
+                                                    "step": step_count,
+                                                }
+                                            )
 
                         elif stream_mode == "messages":
                             # LLM Token 流式输出
@@ -936,17 +1177,21 @@ class AgentLoopStreamAPIView(View):
                             if isinstance(chunk, tuple) and len(chunk) >= 1:
                                 token = chunk[0]
                                 # 只发送 AI 消息，过滤掉 ToolMessage（工具结果已通过 tool_result 事件发送）
-                                if hasattr(token, 'content') and token.content:
+                                if hasattr(token, "content") and token.content:
                                     # 检查是否是 ToolMessage（通过类名或 type 属性）
                                     token_type = type(token).__name__
-                                    if 'ToolMessage' not in token_type:
-                                        yield create_sse_data({'type': 'stream', 'data': token.content})
-                            elif hasattr(chunk, 'content') and chunk.content:
+                                    if "ToolMessage" not in token_type:
+                                        yield create_sse_data(
+                                            {"type": "stream", "data": token.content}
+                                        )
+                            elif hasattr(chunk, "content") and chunk.content:
                                 # 兼容旧版本可能直接返回 message 的情况
                                 # 同样过滤掉 ToolMessage
                                 chunk_type = type(chunk).__name__
-                                if 'ToolMessage' not in chunk_type:
-                                    yield create_sse_data({'type': 'stream', 'data': chunk.content})
+                                if "ToolMessage" not in chunk_type:
+                                    yield create_sse_data(
+                                        {"type": "stream", "data": chunk.content}
+                                    )
 
                 except Exception as e:
                     logger.error(
@@ -959,51 +1204,60 @@ class AgentLoopStreamAPIView(View):
                         e,
                         exc_info=True,
                     )
-                    yield create_sse_data({'type': 'error', 'message': f'Streaming error: {str(e)}'})
+                    yield create_sse_data(
+                        {"type": "error", "message": f"Streaming error: {str(e)}"}
+                    )
 
                 # 16. 处理结束状态
                 # 无论是否发生 interrupt，都需要计算和发送 context_update
                 try:
                     current_state = await agent.aget_state(invoke_config)
-                    all_messages = current_state.values.get("messages", []) if current_state.values else []
-
-                    # 获取当前上下文 token 使用量（优先 usage_metadata，回退估算）
-                    input_tokens, output_tokens, total_tokens = calculate_context_tokens(
-                        all_messages, model_name
+                    all_messages = (
+                        current_state.values.get("messages", [])
+                        if current_state.values
+                        else []
                     )
 
-                    yield create_sse_data({
-                        'type': 'context_update',
-                        'context_token_count': total_tokens,
-                        'context_limit': context_limit
-                    })
+                    # 获取当前上下文 token 使用量（优先 usage_metadata，回退估算）
+                    input_tokens, output_tokens, total_tokens = (
+                        calculate_context_tokens(all_messages, model_name)
+                    )
+
+                    yield create_sse_data(
+                        {
+                            "type": "context_update",
+                            "context_token_count": total_tokens,
+                            "context_limit": context_limit,
+                        }
+                    )
 
                     # 记录 Token 使用量到 ChatSession
                     if input_tokens > 0 or output_tokens > 0:
                         await sync_to_async(self._update_session_token_usage)(
                             session_id, input_tokens, output_tokens
                         )
-                        logger.info(f"AgentLoopStreamAPI: Token usage recorded - input={input_tokens}, output={output_tokens}")
+                        logger.info(
+                            f"AgentLoopStreamAPI: Token usage recorded - input={input_tokens}, output={output_tokens}"
+                        )
                 except Exception as e:
-                    logger.warning(f"AgentLoopStreamAPI: Failed to calculate token count: {e}")
+                    logger.warning(
+                        f"AgentLoopStreamAPI: Failed to calculate token count: {e}"
+                    )
 
                 if user_stopped:
-                    yield create_sse_data({
-                        'type': 'complete',
-                        'status': 'stopped',
-                        'steps': step_count
-                    })
+                    yield create_sse_data(
+                        {"type": "complete", "status": "stopped", "steps": step_count}
+                    )
                 elif interrupt_detected:
-                    logger.info("AgentLoopStreamAPI: Interrupt detected, returning early")
+                    logger.info(
+                        "AgentLoopStreamAPI: Interrupt detected, returning early"
+                    )
                 else:
-                    complete_data = {
-                        'type': 'complete',
-                        'total_steps': step_count
-                    }
+                    complete_data = {"type": "complete", "total_steps": step_count}
                     if generate_playwright_script:
-                        complete_data['script_generation'] = {
-                            'enabled': True,
-                            'message': '脚本管理工具已启用'
+                        complete_data["script_generation"] = {
+                            "enabled": True,
+                            "message": "脚本管理工具已启用",
                         }
                     yield create_sse_data(complete_data)
 
@@ -1015,15 +1269,12 @@ class AgentLoopStreamAPIView(View):
                 "error_type=%s, error=%s",
                 session_id,
                 thread_id,
-                model_name if 'model_name' in locals() else "unknown",
+                model_name if "model_name" in locals() else "unknown",
                 type(e).__name__,
                 e,
                 exc_info=True,
             )
-            yield create_sse_data({
-                'type': 'error',
-                'message': f'执行错误: {str(e)}'
-            })
+            yield create_sse_data({"type": "error", "message": f"执行错误: {str(e)}"})
 
     async def post(self, request, *args, **kwargs):
         """
@@ -1042,51 +1293,61 @@ class AgentLoopStreamAPIView(View):
 
         # 2. 解析请求
         try:
-            body_data = json.loads(request.body.decode('utf-8'))
+            body_data = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError as e:
-            return api_error_response(f'Invalid JSON: {e}', 400)
+            return api_error_response(f"Invalid JSON: {e}", 400)
 
-        user_message = body_data.get('message')
-        session_id = body_data.get('session_id')
-        project_id = body_data.get('project_id')
-        knowledge_base_id = body_data.get('knowledge_base_id')
-        use_knowledge_base = body_data.get('use_knowledge_base', True)
-        prompt_id = body_data.get('prompt_id')
+        user_message = body_data.get("message")
+        session_id = body_data.get("session_id")
+        project_id = body_data.get("project_id")
+        knowledge_base_id = body_data.get("knowledge_base_id")
+        use_knowledge_base = body_data.get("use_knowledge_base", True)
+        prompt_id = body_data.get("prompt_id")
 
         # 调试日志：知识库参数
-        logger.info(f"AgentLoopStreamAPI: knowledge_base_id={knowledge_base_id}, use_knowledge_base={use_knowledge_base}")
-        image_base64 = body_data.get('image')
+        logger.info(
+            f"AgentLoopStreamAPI: knowledge_base_id={knowledge_base_id}, use_knowledge_base={use_knowledge_base}"
+        )
+        image_base64 = body_data.get("image")
 
         # stream 参数：控制流式/非流式输出（默认 true）
-        stream_mode = body_data.get('stream', True)
+        stream_mode = body_data.get("stream", True)
         if isinstance(stream_mode, str):
-            stream_mode = stream_mode.lower() in ('true', '1', 'yes')
+            stream_mode = stream_mode.lower() in ("true", "1", "yes")
 
         # Playwright 脚本生成参数
-        generate_playwright_script = body_data.get('generate_playwright_script', False)
-        test_case_id = body_data.get('test_case_id')  # 用于关联生成的脚本
-        use_pytest = body_data.get('use_pytest', True)  # 生成 pytest 格式还是简单格式
+        generate_playwright_script = body_data.get("generate_playwright_script", False)
+        test_case_id = body_data.get("test_case_id")  # 用于关联生成的脚本
+        use_pytest = body_data.get("use_pytest", True)  # 生成 pytest 格式还是简单格式
 
         # 兜底：如果前端没传 test_case_id，尝试从消息中解析
         if not test_case_id and user_message:
             import re
+
             # 匹配 "执行ID为 11 的测试用例" 或 "测试用例 ID：11" 等模式
-            match = re.search(r'(?:执行\s*ID\s*为|测试用例\s*(?:ID|id)[：:]\s*|case[_-]?id[：:=]\s*)(\d+)', user_message)
+            match = re.search(
+                r"(?:执行\s*ID\s*为|测试用例\s*(?:ID|id)[：:]\s*|case[_-]?id[：:=]\s*)(\d+)",
+                user_message,
+            )
             if match:
                 test_case_id = int(match.group(1))
-                logger.info(f"AgentLoopStreamAPI: Parsed test_case_id from message: {test_case_id}")
+                logger.info(
+                    f"AgentLoopStreamAPI: Parsed test_case_id from message: {test_case_id}"
+                )
 
         # 3. 参数验证
         if not project_id:
-            return api_error_response('project_id is required', 400)
+            return api_error_response("project_id is required", 400)
 
         if not user_message:
-            return api_error_response('message is required', 400)
+            return api_error_response("message is required", 400)
 
         # 4. 项目权限检查
-        project = await sync_to_async(check_project_permission)(request.user, project_id)
+        project = await sync_to_async(check_project_permission)(
+            request.user, project_id
+        )
         if not project:
-            return api_error_response('Project access denied', 403)
+            return api_error_response("Project access denied", 403)
 
         # 5. 生成 session_id
         if not session_id:
@@ -1096,32 +1357,51 @@ class AgentLoopStreamAPIView(View):
         # 5.1 清理陈旧停止信号，避免上一次"停止"残留影响本轮首次发送
         # 场景：前端先断开 SSE，再调用 stop API，可能导致信号留存到下一次请求
         if clear_stop_signal(session_id):
-            logger.info(f"AgentLoopStreamAPI: Cleared stale stop signal for session {session_id}")
+            logger.info(
+                f"AgentLoopStreamAPI: Cleared stale stop signal for session {session_id}"
+            )
 
         # 6. 根据 stream 参数决定响应方式
         if stream_mode:
             # 流式响应 (SSE)
             async def async_generator():
                 async for chunk in self._create_stream_generator(
-                    request, user_message, session_id, project_id, project,
-                    knowledge_base_id, use_knowledge_base, prompt_id, image_base64,
-                    generate_playwright_script, test_case_id, use_pytest
+                    request,
+                    user_message,
+                    session_id,
+                    project_id,
+                    project,
+                    knowledge_base_id,
+                    use_knowledge_base,
+                    prompt_id,
+                    image_base64,
+                    generate_playwright_script,
+                    test_case_id,
+                    use_pytest,
                 ):
                     yield chunk
 
             response = StreamingHttpResponse(
-                async_generator(),
-                content_type='text/event-stream; charset=utf-8'
+                async_generator(), content_type="text/event-stream; charset=utf-8"
             )
-            response['Cache-Control'] = 'no-cache'
-            response['X-Accel-Buffering'] = 'no'
+            response["Cache-Control"] = "no-cache"
+            response["X-Accel-Buffering"] = "no"
             return response
         else:
             # 非流式响应 (JSON)
             return await self._handle_non_stream_request(
-                request, user_message, session_id, project_id, project,
-                knowledge_base_id, use_knowledge_base, prompt_id, image_base64,
-                generate_playwright_script, test_case_id, use_pytest
+                request,
+                user_message,
+                session_id,
+                project_id,
+                project,
+                knowledge_base_id,
+                use_knowledge_base,
+                prompt_id,
+                image_base64,
+                generate_playwright_script,
+                test_case_id,
+                use_pytest,
             )
 
     async def _handle_non_stream_request(
@@ -1154,44 +1434,55 @@ class AgentLoopStreamAPIView(View):
 
         try:
             async for chunk in self._create_stream_generator(
-                request, user_message, session_id, project_id, project,
-                knowledge_base_id, use_knowledge_base, prompt_id, image_base64,
-                generate_playwright_script, test_case_id, use_pytest
+                request,
+                user_message,
+                session_id,
+                project_id,
+                project,
+                knowledge_base_id,
+                use_knowledge_base,
+                prompt_id,
+                image_base64,
+                generate_playwright_script,
+                test_case_id,
+                use_pytest,
             ):
                 # 解析 SSE 数据
-                if isinstance(chunk, str) and chunk.startswith('data: '):
+                if isinstance(chunk, str) and chunk.startswith("data: "):
                     data_str = chunk[6:].strip()
-                    if data_str == '[DONE]':
+                    if data_str == "[DONE]":
                         continue
                     try:
                         event = json.loads(data_str)
-                        event_type = event.get('type')
+                        event_type = event.get("type")
 
-                        if event_type == 'start':
-                            final_session_id = event.get('session_id', session_id)
-                        elif event_type == 'stream':
+                        if event_type == "start":
+                            final_session_id = event.get("session_id", session_id)
+                        elif event_type == "stream":
                             # 累积流式内容
-                            final_content += event.get('data', '')
-                        elif event_type == 'tool_result':
-                            tool_results.append({
-                                'summary': event.get('summary', ''),
-                                'step': event.get('step', 0)
-                            })
-                        elif event_type == 'step_complete':
-                            total_steps = max(total_steps, event.get('step', 0))
-                        elif event_type == 'context_update':
-                            context_token_count = event.get('context_token_count', 0)
-                            context_limit = event.get('context_limit', 128000)
-                        elif event_type == 'error':
-                            error_message = event.get('message', 'Unknown error')
-                        elif event_type == 'interrupt':
+                            final_content += event.get("data", "")
+                        elif event_type == "tool_result":
+                            tool_results.append(
+                                {
+                                    "summary": event.get("summary", ""),
+                                    "step": event.get("step", 0),
+                                }
+                            )
+                        elif event_type == "step_complete":
+                            total_steps = max(total_steps, event.get("step", 0))
+                        elif event_type == "context_update":
+                            context_token_count = event.get("context_token_count", 0)
+                            context_limit = event.get("context_limit", 128000)
+                        elif event_type == "error":
+                            error_message = event.get("message", "Unknown error")
+                        elif event_type == "interrupt":
                             interrupt_info = {
-                                'interrupt_id': event.get('interrupt_id'),
-                                'action_requests': event.get('action_requests', [])
+                                "interrupt_id": event.get("interrupt_id"),
+                                "action_requests": event.get("action_requests", []),
                             }
-                        elif event_type == 'complete':
-                            if event.get('script_generation'):
-                                script_generation = event.get('script_generation')
+                        elif event_type == "complete":
+                            if event.get("script_generation"):
+                                script_generation = event.get("script_generation")
                     except json.JSONDecodeError:
                         continue
 
@@ -1200,21 +1491,21 @@ class AgentLoopStreamAPIView(View):
                 return api_error_response(error_message, 500)
 
             response_data = {
-                'session_id': final_session_id,
-                'content': final_content,
-                'total_steps': total_steps,
-                'tool_results': tool_results,
-                'context_token_count': context_token_count,
-                'context_limit': context_limit,
+                "session_id": final_session_id,
+                "content": final_content,
+                "total_steps": total_steps,
+                "tool_results": tool_results,
+                "context_token_count": context_token_count,
+                "context_limit": context_limit,
             }
 
             if interrupt_info:
-                response_data['interrupt'] = interrupt_info
+                response_data["interrupt"] = interrupt_info
 
             if script_generation:
-                response_data['script_generation'] = script_generation
+                response_data["script_generation"] = script_generation
 
-            return api_success_response('Chat completed', response_data)
+            return api_success_response("Chat completed", response_data)
 
         except Exception as e:
             logger.error(
@@ -1226,10 +1517,10 @@ class AgentLoopStreamAPIView(View):
                 e,
                 exc_info=True,
             )
-            return api_error_response(f'执行错误: {str(e)}', 500)
+            return api_error_response(f"执行错误: {str(e)}", 500)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_exempt, name="dispatch")
 class AgentLoopStopAPIView(View):
     """
     Agent Loop 停止 API
@@ -1239,11 +1530,11 @@ class AgentLoopStopAPIView(View):
 
     async def authenticate_request(self, request):
         """JWT 认证（复用 AgentLoopStreamAPIView 的逻辑）"""
-        auth_header = request.META.get('HTTP_AUTHORIZATION')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            raise AuthenticationFailed('Authentication credentials were not provided.')
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise AuthenticationFailed("Authentication credentials were not provided.")
 
-        token = auth_header.split(' ')[1]
+        token = auth_header.split(" ")[1]
         jwt_auth = JWTAuthentication()
 
         try:
@@ -1251,7 +1542,7 @@ class AgentLoopStopAPIView(View):
             user = await sync_to_async(jwt_auth.get_user)(validated_token)
             return user
         except Exception as e:
-            raise AuthenticationFailed(f'Invalid token: {str(e)}')
+            raise AuthenticationFailed(f"Invalid token: {str(e)}")
 
     async def post(self, request, *args, **kwargs):
         """处理停止请求"""
@@ -1266,26 +1557,27 @@ class AgentLoopStopAPIView(View):
 
         # 2. 解析请求
         try:
-            body_data = json.loads(request.body.decode('utf-8'))
+            body_data = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError as e:
-            return api_error_response(f'Invalid JSON: {e}', 400)
+            return api_error_response(f"Invalid JSON: {e}", 400)
 
-        session_id = body_data.get('session_id')
+        session_id = body_data.get("session_id")
         if not session_id:
-            return api_error_response('session_id is required', 400)
+            return api_error_response("session_id is required", 400)
 
         # 3. 设置停止信号
         success = set_stop_signal(session_id)
 
-        logger.info(f"AgentLoopStopAPI: Stop signal set for session {session_id} by user {user.id}")
+        logger.info(
+            f"AgentLoopStopAPI: Stop signal set for session {session_id} by user {user.id}"
+        )
 
-        return api_success_response('已发送停止信号', {
-            'session_id': session_id,
-            'success': success
-        })
+        return api_success_response(
+            "已发送停止信号", {"session_id": session_id, "success": success}
+        )
 
 
-@method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_exempt, name="dispatch")
 class AgentLoopResumeAPIView(View):
     """
     Agent Loop Resume API (SSE 流式版)
@@ -1301,11 +1593,11 @@ class AgentLoopResumeAPIView(View):
 
     async def authenticate_request(self, request):
         """JWT 认证（复用 AgentLoopStreamAPIView 的逻辑）"""
-        auth_header = request.META.get('HTTP_AUTHORIZATION')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            raise AuthenticationFailed('Authentication credentials were not provided.')
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise AuthenticationFailed("Authentication credentials were not provided.")
 
-        token = auth_header.split(' ')[1]
+        token = auth_header.split(" ")[1]
         jwt_auth = JWTAuthentication()
 
         try:
@@ -1313,7 +1605,7 @@ class AgentLoopResumeAPIView(View):
             user = await sync_to_async(jwt_auth.get_user)(validated_token)
             return user
         except Exception as e:
-            raise AuthenticationFailed(f'Invalid token: {str(e)}')
+            raise AuthenticationFailed(f"Invalid token: {str(e)}")
 
     async def _create_resume_stream_generator(
         self,
@@ -1334,25 +1626,31 @@ class AgentLoopResumeAPIView(View):
         # 1. 解析 resume 数据
         interrupt_id = list(resume_data.keys())[0] if resume_data else None
         if not interrupt_id:
-            yield create_sse_data({'type': 'error', 'message': 'Invalid resume data format'})
+            yield create_sse_data(
+                {"type": "error", "message": "Invalid resume data format"}
+            )
             return
 
-        decision_info = resume_data[interrupt_id].get('decisions', [{}])[0]
-        decision_type = decision_info.get('type', 'reject')
+        decision_info = resume_data[interrupt_id].get("decisions", [{}])[0]
+        decision_type = decision_info.get("type", "reject")
 
         # 获取工具调用数量（前端传递）
-        action_count = resume_data[interrupt_id].get('action_count', 1)
+        action_count = resume_data[interrupt_id].get("action_count", 1)
 
         # 构建 resume 值 - HITL middleware 需要 decisions 格式
         # 为每个 pending 工具调用生成相同的决策
-        resume_value = {"decisions": [{"type": decision_type} for _ in range(action_count)]}
+        resume_value = {
+            "decisions": [{"type": decision_type} for _ in range(action_count)]
+        }
 
         # 2. 发送 resume 开始信号
-        yield create_sse_data({
-            'type': 'resume_start',
-            'session_id': session_id,
-            'decision': decision_type
-        })
+        yield create_sse_data(
+            {
+                "type": "resume_start",
+                "session_id": session_id,
+                "decision": decision_type,
+            }
+        )
 
         try:
             async with get_async_checkpointer() as checkpointer:
@@ -1362,13 +1660,17 @@ class AgentLoopResumeAPIView(View):
                 )()
 
                 if not active_config:
-                    yield create_sse_data({'type': 'error', 'message': '没有可用的 LLM 配置'})
+                    yield create_sse_data(
+                        {"type": "error", "message": "没有可用的 LLM 配置"}
+                    )
                     return
 
                 context_limit = active_config.context_limit or 128000
                 model_name = active_config.name or "gpt-4o"
                 llm = await sync_to_async(create_llm_instance)(active_config)
-                context_limit = resolve_runtime_context_limit(active_config.context_limit, llm, model_name)
+                context_limit = resolve_runtime_context_limit(
+                    active_config.context_limit, llm, model_name
+                )
 
                 # 4. 加载工具
                 tools = []
@@ -1384,7 +1686,9 @@ class AgentLoopResumeAPIView(View):
                             key = cfg.name or f"remote_{cfg.id}"
                             client_config[key] = {
                                 "url": cfg.url,
-                                "transport": (cfg.transport or "streamable_http").replace('-', '_'),
+                                "transport": (
+                                    cfg.transport or "streamable_http"
+                                ).replace("-", "_"),
                             }
                             if cfg.headers:
                                 client_config[key]["headers"] = cfg.headers
@@ -1394,29 +1698,38 @@ class AgentLoopResumeAPIView(View):
                                 client_config,
                                 user_id=str(user.id),
                                 project_id=str(project_id) if project_id else "0",
-                                session_id=session_id
+                                session_id=session_id,
                             )
                             tools.extend(mcp_tools)
-                            logger.info(f"AgentLoopResumeAPI: Loaded {len(mcp_tools)} MCP tools")
+                            logger.info(
+                                f"AgentLoopResumeAPI: Loaded {len(mcp_tools)} MCP tools"
+                            )
                 except Exception as e:
                     logger.warning(f"AgentLoopResumeAPI: MCP tools loading failed: {e}")
 
                 # 加载知识库工具
                 if knowledge_base_id and use_knowledge_base:
                     try:
-                        from knowledge.langgraph_integration import create_knowledge_tool
+                        from knowledge.langgraph_integration import (
+                            create_knowledge_tool,
+                        )
+
                         kb_tool = await sync_to_async(create_knowledge_tool)(
-                            knowledge_base_id=knowledge_base_id,
-                            user=user
+                            knowledge_base_id=knowledge_base_id, user=user
                         )
                         tools.append(kb_tool)
-                        logger.info(f"AgentLoopResumeAPI: ✅ 知识库工具已添加: {kb_tool.name}")
+                        logger.info(
+                            f"AgentLoopResumeAPI: ✅ 知识库工具已添加: {kb_tool.name}"
+                        )
                     except Exception as e:
-                        logger.warning(f"AgentLoopResumeAPI: ❌ Knowledge tool creation failed: {e}")
+                        logger.warning(
+                            f"AgentLoopResumeAPI: ❌ Knowledge tool creation failed: {e}"
+                        )
 
                 # 加载内置工具
                 try:
                     from orchestrator_integration.builtin_tools import get_builtin_tools
+
                     builtin_tools = get_builtin_tools(
                         user_id=user.id,
                         project_id=int(project_id) if project_id else 0,
@@ -1424,17 +1737,22 @@ class AgentLoopResumeAPIView(View):
                         chat_session_id=session_id,
                     )
                     tools.extend(builtin_tools)
-                    logger.info(f"AgentLoopResumeAPI: Added {len(builtin_tools)} builtin tools")
+                    logger.info(
+                        f"AgentLoopResumeAPI: Added {len(builtin_tools)} builtin tools"
+                    )
                 except Exception as e:
-                    logger.warning(f"AgentLoopResumeAPI: Builtin tools loading failed: {e}")
+                    logger.warning(
+                        f"AgentLoopResumeAPI: Builtin tools loading failed: {e}"
+                    )
 
                 # 5. 获取工具名列表和中间件配置
                 tool_names = [t.name for t in tools] if tools else []
                 middleware = await sync_to_async(get_middleware_from_config)(
-                    active_config, llm,
+                    active_config,
+                    llm,
                     user=user,
                     session_id=session_id,
-                    all_tool_names=tool_names
+                    all_tool_names=tool_names,
                 )
 
                 # 6. 创建 agent
@@ -1445,10 +1763,12 @@ class AgentLoopResumeAPIView(View):
                     middleware=middleware,
                 )
 
-                thread_id = f"{user.id}_{project_id}_{session_id}" if project_id else session_id
+                thread_id = (
+                    f"{user.id}_{project_id}_{session_id}" if project_id else session_id
+                )
                 config = {
                     "configurable": {"thread_id": thread_id},
-                    "recursion_limit": 1000
+                    "recursion_limit": 1000,
                 }
 
                 # 6.1 恢复执行前，先修复历史消息（配对错误 + 风险工具输出）
@@ -1468,15 +1788,15 @@ class AgentLoopResumeAPIView(View):
                 # 9. 流式执行
                 try:
                     async for stream_mode, chunk in agent.astream(
-                        command,
-                        config=config,
-                        stream_mode=["updates", "messages"]
+                        command, config=config, stream_mode=["updates", "messages"]
                     ):
                         if stream_mode == "updates":
                             # 检查中断事件 (HITL) - resume 后可能又触发新的中断
                             if isinstance(chunk, dict) and "__interrupt__" in chunk:
                                 interrupt_info = chunk["__interrupt__"]
-                                logger.info(f"AgentLoopResumeAPI: HITL interrupt detected after resume: {interrupt_info}")
+                                logger.info(
+                                    f"AgentLoopResumeAPI: HITL interrupt detected after resume: {interrupt_info}"
+                                )
 
                                 action_requests = []
                                 new_interrupt_id = None
@@ -1487,93 +1807,148 @@ class AgentLoopResumeAPIView(View):
                                     interrupts_list = [interrupt_info]
 
                                 for intr in interrupts_list:
-                                    if hasattr(intr, 'id'):
+                                    if hasattr(intr, "id"):
                                         new_interrupt_id = intr.id
-                                    elif isinstance(intr, dict) and 'id' in intr:
-                                        new_interrupt_id = intr['id']
+                                    elif isinstance(intr, dict) and "id" in intr:
+                                        new_interrupt_id = intr["id"]
 
-                                    intr_value = getattr(intr, 'value', intr) if hasattr(intr, 'value') else intr
+                                    intr_value = (
+                                        getattr(intr, "value", intr)
+                                        if hasattr(intr, "value")
+                                        else intr
+                                    )
                                     if isinstance(intr_value, dict):
-                                        ars = intr_value.get('action_requests', [])
-                                    elif hasattr(intr_value, 'action_requests'):
+                                        ars = intr_value.get("action_requests", [])
+                                    elif hasattr(intr_value, "action_requests"):
                                         ars = intr_value.action_requests
                                     else:
                                         ars = []
 
                                     for ar in ars:
                                         if isinstance(ar, dict):
-                                            action_requests.append({
-                                                'name': ar.get('name', ar.get('action_name', 'unknown')),
-                                                'args': ar.get('arguments', ar.get('args', {})),
-                                                'description': ar.get('description', ''),
-                                            })
+                                            action_requests.append(
+                                                {
+                                                    "name": ar.get(
+                                                        "name",
+                                                        ar.get(
+                                                            "action_name", "unknown"
+                                                        ),
+                                                    ),
+                                                    "args": ar.get(
+                                                        "arguments", ar.get("args", {})
+                                                    ),
+                                                    "description": ar.get(
+                                                        "description", ""
+                                                    ),
+                                                }
+                                            )
                                         else:
-                                            action_requests.append({
-                                                'name': getattr(ar, 'name', 'unknown'),
-                                                'args': getattr(ar, 'arguments', getattr(ar, 'args', {})),
-                                                'description': getattr(ar, 'description', ''),
-                                            })
+                                            action_requests.append(
+                                                {
+                                                    "name": getattr(
+                                                        ar, "name", "unknown"
+                                                    ),
+                                                    "args": getattr(
+                                                        ar,
+                                                        "arguments",
+                                                        getattr(ar, "args", {}),
+                                                    ),
+                                                    "description": getattr(
+                                                        ar, "description", ""
+                                                    ),
+                                                }
+                                            )
 
                                 if action_requests:
                                     # 获取用户工具偏好，为 always_reject 的工具添加 auto_reject 标记
-                                    user_approvals = await sync_to_async(get_user_tool_approvals)(user, session_id)
+                                    user_approvals = await sync_to_async(
+                                        get_user_tool_approvals
+                                    )(user, session_id)
                                     for ar in action_requests:
-                                        tool_name = ar.get('name', '')
-                                        if user_approvals.get(tool_name) == 'always_reject':
-                                            ar['auto_reject'] = True
-                                            logger.info(f"AgentLoopResumeAPI: Tool {tool_name} marked as auto_reject")
+                                        tool_name = ar.get("name", "")
+                                        if (
+                                            user_approvals.get(tool_name)
+                                            == "always_reject"
+                                        ):
+                                            ar["auto_reject"] = True
+                                            logger.info(
+                                                f"AgentLoopResumeAPI: Tool {tool_name} marked as auto_reject"
+                                            )
 
                                     interrupt_detected = True
-                                    yield create_sse_data({
-                                        'type': 'interrupt',
-                                        'interrupt_id': new_interrupt_id or str(id(interrupt_info)),
-                                        'action_requests': action_requests,
-                                        'session_id': session_id,
-                                        'thread_id': thread_id,
-                                    })
+                                    yield create_sse_data(
+                                        {
+                                            "type": "interrupt",
+                                            "interrupt_id": new_interrupt_id
+                                            or str(id(interrupt_info)),
+                                            "action_requests": action_requests,
+                                            "session_id": session_id,
+                                            "thread_id": thread_id,
+                                        }
+                                    )
 
                             # 检测工具调用开始
                             elif isinstance(chunk, dict):
                                 for node_name, node_output in chunk.items():
-                                    if node_name == "agent" and isinstance(node_output, dict):
+                                    if node_name == "agent" and isinstance(
+                                        node_output, dict
+                                    ):
                                         messages = node_output.get("messages", [])
                                         for msg in messages:
-                                            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                            if (
+                                                hasattr(msg, "tool_calls")
+                                                and msg.tool_calls
+                                            ):
                                                 step_count += 1
                                                 tool_names_in_step = [
-                                                    tc.get('name', 'unknown') if isinstance(tc, dict)
-                                                    else getattr(tc, 'name', 'unknown')
+                                                    tc.get("name", "unknown")
+                                                    if isinstance(tc, dict)
+                                                    else getattr(tc, "name", "unknown")
                                                     for tc in msg.tool_calls
                                                 ]
-                                                yield create_sse_data({
-                                                    'type': 'step_start',
-                                                    'step': step_count,
-                                                    'max_steps': self.MAX_STEPS,
-                                                    'tools': tool_names_in_step
-                                                })
+                                                yield create_sse_data(
+                                                    {
+                                                        "type": "step_start",
+                                                        "step": step_count,
+                                                        "max_steps": self.MAX_STEPS,
+                                                        "tools": tool_names_in_step,
+                                                    }
+                                                )
 
-                                    elif node_name == "tools" and isinstance(node_output, dict):
+                                    elif node_name == "tools" and isinstance(
+                                        node_output, dict
+                                    ):
                                         tool_messages = node_output.get("messages", [])
                                         for tool_msg in tool_messages:
-                                            if hasattr(tool_msg, 'content'):
+                                            if hasattr(tool_msg, "content"):
                                                 content = tool_msg.content
-                                                tool_name = getattr(tool_msg, 'name', None) or getattr(tool_msg, 'tool_name', 'unknown')
-                                                
+                                                tool_name = getattr(
+                                                    tool_msg, "name", None
+                                                ) or getattr(
+                                                    tool_msg, "tool_name", "unknown"
+                                                )
+
                                                 # 使用辅助函数处理 MCP 工具输出
-                                                content, summary = process_mcp_tool_output(content)
-                                                
-                                                yield create_sse_data({
-                                                    'type': 'tool_result',
-                                                    'tool_name': tool_name,
-                                                    'tool_output': content,
-                                                    'summary': summary,
-                                                    'step': step_count
-                                                })
+                                                content, summary = (
+                                                    process_mcp_tool_output(content)
+                                                )
+
+                                                yield create_sse_data(
+                                                    {
+                                                        "type": "tool_result",
+                                                        "tool_name": tool_name,
+                                                        "tool_output": content,
+                                                        "summary": summary,
+                                                        "step": step_count,
+                                                    }
+                                                )
                                         if step_count > 0:
-                                            yield create_sse_data({
-                                                'type': 'step_complete',
-                                                'step': step_count
-                                            })
+                                            yield create_sse_data(
+                                                {
+                                                    "type": "step_complete",
+                                                    "step": step_count,
+                                                }
+                                            )
 
                         elif stream_mode == "messages":
                             # LLM Token 流式输出
@@ -1581,62 +1956,86 @@ class AgentLoopResumeAPIView(View):
                             if isinstance(chunk, tuple) and len(chunk) >= 1:
                                 token = chunk[0]
                                 # 只发送 AI 消息，过滤掉 ToolMessage（工具结果已通过 tool_result 事件发送）
-                                if hasattr(token, 'content') and token.content:
+                                if hasattr(token, "content") and token.content:
                                     # 检查是否是 ToolMessage（通过类名或 type 属性）
                                     token_type = type(token).__name__
-                                    if 'ToolMessage' not in token_type:
-                                        yield create_sse_data({'type': 'stream', 'data': token.content})
-                            elif hasattr(chunk, 'content') and chunk.content:
+                                    if "ToolMessage" not in token_type:
+                                        yield create_sse_data(
+                                            {"type": "stream", "data": token.content}
+                                        )
+                            elif hasattr(chunk, "content") and chunk.content:
                                 # 兼容旧版本可能直接返回 message 的情况
                                 # 同样过滤掉 ToolMessage
                                 chunk_type = type(chunk).__name__
-                                if 'ToolMessage' not in chunk_type:
-                                    yield create_sse_data({'type': 'stream', 'data': chunk.content})
+                                if "ToolMessage" not in chunk_type:
+                                    yield create_sse_data(
+                                        {"type": "stream", "data": chunk.content}
+                                    )
 
                 except Exception as e:
-                    logger.error(f"AgentLoopResumeAPI: Streaming error: {e}", exc_info=True)
-                    yield create_sse_data({'type': 'error', 'message': f'Streaming error: {str(e)}'})
+                    logger.error(
+                        f"AgentLoopResumeAPI: Streaming error: {e}", exc_info=True
+                    )
+                    yield create_sse_data(
+                        {"type": "error", "message": f"Streaming error: {str(e)}"}
+                    )
 
                 # 10. 处理结束状态
                 # 无论是否发生 interrupt，都需要计算和发送 context_update
                 try:
                     current_state = await agent.aget_state(config)
-                    all_messages = current_state.values.get("messages", []) if current_state.values else []
-
-                    # 获取当前上下文 token 使用量（优先 usage_metadata，回退估算）
-                    input_tokens, output_tokens, total_tokens = calculate_context_tokens(
-                        all_messages, model_name
+                    all_messages = (
+                        current_state.values.get("messages", [])
+                        if current_state.values
+                        else []
                     )
 
-                    yield create_sse_data({
-                        'type': 'context_update',
-                        'context_token_count': total_tokens,
-                        'context_limit': context_limit
-                    })
+                    # 获取当前上下文 token 使用量（优先 usage_metadata，回退估算）
+                    input_tokens, output_tokens, total_tokens = (
+                        calculate_context_tokens(all_messages, model_name)
+                    )
+
+                    yield create_sse_data(
+                        {
+                            "type": "context_update",
+                            "context_token_count": total_tokens,
+                            "context_limit": context_limit,
+                        }
+                    )
 
                     # 记录 Token 使用量到 ChatSession
                     if input_tokens > 0 or output_tokens > 0:
-                        await sync_to_async(AgentLoopStreamAPIView()._update_session_token_usage)(
-                            session_id, input_tokens, output_tokens
+                        await sync_to_async(
+                            AgentLoopStreamAPIView()._update_session_token_usage
+                        )(session_id, input_tokens, output_tokens)
+                        logger.info(
+                            f"AgentLoopResumeAPI: Token usage recorded - input={input_tokens}, output={output_tokens}"
                         )
-                        logger.info(f"AgentLoopResumeAPI: Token usage recorded - input={input_tokens}, output={output_tokens}")
                 except Exception as e:
-                    logger.warning(f"AgentLoopResumeAPI: Failed to calculate token count: {e}")
+                    logger.warning(
+                        f"AgentLoopResumeAPI: Failed to calculate token count: {e}"
+                    )
 
                 if interrupt_detected:
-                    logger.info("AgentLoopResumeAPI: New interrupt detected after resume")
+                    logger.info(
+                        "AgentLoopResumeAPI: New interrupt detected after resume"
+                    )
                 else:
-                    yield create_sse_data({
-                        'type': 'complete',
-                        'total_steps': step_count,
-                        'decision': decision_type
-                    })
+                    yield create_sse_data(
+                        {
+                            "type": "complete",
+                            "total_steps": step_count,
+                            "decision": decision_type,
+                        }
+                    )
 
                 yield "data: [DONE]\n\n"
 
         except Exception as e:
-            logger.exception(f"AgentLoopResumeAPI: Error in resume stream for session {session_id}")
-            yield create_sse_data({'type': 'error', 'message': str(e)})
+            logger.exception(
+                f"AgentLoopResumeAPI: Error in resume stream for session {session_id}"
+            )
+            yield create_sse_data({"type": "error", "message": str(e)})
 
     async def post(self, request, *args, **kwargs):
         """处理 HITL resume 请求 - 返回 SSE 流式响应"""
@@ -1646,56 +2045,93 @@ class AgentLoopResumeAPIView(View):
             request.user = user
         except AuthenticationFailed as e:
             return StreamingHttpResponse(
-                iter([create_sse_data({'type': 'error', 'message': str(e), 'code': 401})]),
-                content_type='text/event-stream; charset=utf-8',
-                status=401
+                iter(
+                    [create_sse_data({"type": "error", "message": str(e), "code": 401})]
+                ),
+                content_type="text/event-stream; charset=utf-8",
+                status=401,
             )
 
         # 2. 解析请求
         try:
-            body_data = json.loads(request.body.decode('utf-8'))
+            body_data = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError as e:
             return StreamingHttpResponse(
-                iter([create_sse_data({'type': 'error', 'message': f'Invalid JSON: {e}', 'code': 400})]),
-                content_type='text/event-stream; charset=utf-8',
-                status=400
+                iter(
+                    [
+                        create_sse_data(
+                            {
+                                "type": "error",
+                                "message": f"Invalid JSON: {e}",
+                                "code": 400,
+                            }
+                        )
+                    ]
+                ),
+                content_type="text/event-stream; charset=utf-8",
+                status=400,
             )
 
-        session_id = body_data.get('session_id')
-        project_id = body_data.get('project_id')
-        resume_data = body_data.get('resume', {})
+        session_id = body_data.get("session_id")
+        project_id = body_data.get("project_id")
+        resume_data = body_data.get("resume", {})
         # 知识库参数（用于 resume 时重新加载知识库工具）
-        knowledge_base_id = body_data.get('knowledge_base_id')
-        use_knowledge_base = body_data.get('use_knowledge_base', False)
+        knowledge_base_id = body_data.get("knowledge_base_id")
+        use_knowledge_base = body_data.get("use_knowledge_base", False)
 
         if not session_id:
             return StreamingHttpResponse(
-                iter([create_sse_data({'type': 'error', 'message': 'session_id is required', 'code': 400})]),
-                content_type='text/event-stream; charset=utf-8',
-                status=400
+                iter(
+                    [
+                        create_sse_data(
+                            {
+                                "type": "error",
+                                "message": "session_id is required",
+                                "code": 400,
+                            }
+                        )
+                    ]
+                ),
+                content_type="text/event-stream; charset=utf-8",
+                status=400,
             )
 
         if not resume_data:
             return StreamingHttpResponse(
-                iter([create_sse_data({'type': 'error', 'message': 'resume data is required', 'code': 400})]),
-                content_type='text/event-stream; charset=utf-8',
-                status=400
+                iter(
+                    [
+                        create_sse_data(
+                            {
+                                "type": "error",
+                                "message": "resume data is required",
+                                "code": 400,
+                            }
+                        )
+                    ]
+                ),
+                content_type="text/event-stream; charset=utf-8",
+                status=400,
             )
 
-        logger.info(f"AgentLoopResumeAPI: Resume request for session {session_id}, knowledge_base_id={knowledge_base_id}")
+        logger.info(
+            f"AgentLoopResumeAPI: Resume request for session {session_id}, knowledge_base_id={knowledge_base_id}"
+        )
 
         # 3. 返回 SSE 流式响应
         async def async_generator():
             async for chunk in self._create_resume_stream_generator(
-                user, session_id, project_id, resume_data,
-                knowledge_base_id, use_knowledge_base
+                user,
+                session_id,
+                project_id,
+                resume_data,
+                knowledge_base_id,
+                use_knowledge_base,
             ):
                 yield chunk
 
         response = StreamingHttpResponse(
-            async_generator(),
-            content_type='text/event-stream; charset=utf-8'
+            async_generator(), content_type="text/event-stream; charset=utf-8"
         )
-        response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
         return response

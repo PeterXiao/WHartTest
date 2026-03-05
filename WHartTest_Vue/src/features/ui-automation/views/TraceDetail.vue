@@ -1532,7 +1532,7 @@ const refreshTraceData = async () => {
   padding: 20px;
 }
 
-/* Console */
+/* 控制台 */
 .console-content {
   font-family: monospace;
   font-size: 11px;
@@ -1561,7 +1561,7 @@ const refreshTraceData = async () => {
 .console-warn { color: var(--color-warning-6); }
 .console-error { color: var(--color-danger-6); }
 
-/* Attachments */
+/* 附件 */
 .attachments-content {
   padding: 8px !important;
   overflow-y: auto;

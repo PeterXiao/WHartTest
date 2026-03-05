@@ -458,7 +458,7 @@ import { useProjectStore } from '@/store/projectStore';
 const route = useRoute();
 const router = useRouter();
 
-// Store
+// 状态仓库
 const projectStore = useProjectStore();
 
 // 响应式数据

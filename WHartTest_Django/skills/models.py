@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 def skill_upload_path(instance, filename):
     """Skill 文件上传路径"""
+    # 基于项目与 Skill ID 分层存储，便于后续按项目清理文件。
     return f'skills/{instance.project.id}/{instance.id}/{filename}'
 
 
@@ -87,11 +88,13 @@ class Skill(models.Model):
             return None
 
         for root, dirs, files in os.walk(full_path):
+            # 跳过缓存与依赖目录，减少无效扫描和误识别。
             dirs[:] = [d for d in dirs if d not in ('__pycache__', 'node_modules')]
             for f in files:
                 if f.startswith('__'):
                     continue
                 if f.endswith('.py') or f.endswith('.js'):
+                    # 返回首个可执行脚本路径，满足“快速发现入口脚本”场景。
                     return os.path.join(root, f)
         return None
 
@@ -115,10 +118,12 @@ class Skill(models.Model):
                 continue
 
             file_count += 1
+            # 文件数量超限直接拒绝，防止 zip bomb 大量小文件消耗 inode/IO。
             if file_count > max_files:
                 raise ValidationError("zip 文件包含过多文件")
 
             total_size += int(getattr(info, "file_size", 0) or 0)
+            # 解压总体积超限直接拒绝，避免磁盘被恶意压缩包打满。
             if total_size > max_total_size:
                 raise ValidationError("zip 解压后总大小超出限制")
 
@@ -129,11 +134,13 @@ class Skill(models.Model):
                 raise ValidationError("zip 文件包含非法路径")
 
             mode = (info.external_attr or 0) >> 16
+            # 禁止符号链接，避免解压后指向任意系统路径。
             if stat.S_ISLNK(mode):
                 raise ValidationError("zip 文件包含不支持的符号链接")
 
             target_path = (dest_path / Path(*posix.parts)).resolve(strict=False)
             try:
+                # 二次确保目标路径位于目标目录内，防止 Zip Slip。
                 if os.path.commonpath([str(dest_path), str(target_path)]) != str(dest_path):
                     raise ValidationError("zip 文件包含非法路径")
             except ValueError:
@@ -169,6 +176,7 @@ class Skill(models.Model):
 
         raw_name = frontmatter.get('name', '')
         raw_description = frontmatter.get('description', '')
+        # 显式限制类型，避免将复杂对象注入数据库字段。
         if not isinstance(raw_name, str) or not isinstance(raw_description, str):
             raise ValidationError('SKILL.md 的 name/description 必须是字符串')
 
@@ -205,6 +213,7 @@ class Skill(models.Model):
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
                 with zipfile.ZipFile(zip_file, 'r') as zf:
+                    # 安全解压，统一处理路径穿越/超量解压/符号链接风险。
                     cls._safe_extract_zip(zf, temp_dir)
             except zipfile.BadZipFile:
                 raise ValidationError('无效的 zip 文件')
@@ -229,6 +238,7 @@ class Skill(models.Model):
             full_storage_path = None
             try:
                 with transaction.atomic():
+                    # 先创建数据库记录，再落盘文件；事务保证数据库写入原子性。
                     skill = cls.objects.create(
                         project=project,
                         creator=creator,
@@ -255,6 +265,7 @@ class Skill(models.Model):
 
                 return skill
             except Exception:
+                # 任一步骤失败时回滚已创建目录，避免遗留脏文件。
                 if full_storage_path and os.path.isdir(full_storage_path):
                     shutil.rmtree(full_storage_path, ignore_errors=True)
                 raise
@@ -288,6 +299,7 @@ class Skill(models.Model):
         branch = (branch or 'main').strip() or 'main'
 
         parsed_url = urlparse(git_url)
+        # 只允许 HTTPS，避免非加密协议引入中间人风险。
         if parsed_url.scheme != 'https':
             raise ValidationError('仅支持 HTTPS 协议的仓库地址')
         if not parsed_url.netloc:
@@ -301,6 +313,7 @@ class Skill(models.Model):
             repo_dir = os.path.join(temp_dir, 'repo')
 
             try:
+                # 浅克隆指定分支，降低拉取耗时与磁盘占用。
                 subprocess.run(
                     ['git', 'clone', '--depth', '1', '--branch', branch, git_url, repo_dir],
                     check=True,
@@ -315,6 +328,7 @@ class Skill(models.Model):
             except FileNotFoundError:
                 raise ValidationError('服务器未安装 git，无法导入')
             except subprocess.CalledProcessError as e:
+                # 返回 git stderr，方便前端定位仓库不可达/权限失败等问题。
                 stderr = (e.stderr or '').strip()
                 raise ValidationError(f'Git 克隆失败: {stderr}' if stderr else 'Git 克隆失败')
 
@@ -344,6 +358,7 @@ class Skill(models.Model):
             full_storage_path = None
             try:
                 with transaction.atomic():
+                    # 数据与文件写入保持同一流程，失败时清理已创建目录。
                     skill = cls.objects.create(
                         project=project,
                         creator=creator,
@@ -374,6 +389,7 @@ class Skill(models.Model):
 
                 return skill
             except Exception:
+                # 导入失败时清理落盘目录，避免半成品 Skill 文件残留。
                 if full_storage_path and os.path.isdir(full_storage_path):
                     shutil.rmtree(full_storage_path, ignore_errors=True)
                 raise
@@ -386,8 +402,10 @@ class Skill(models.Model):
             media_root = Path(settings.MEDIA_ROOT).resolve(strict=False)
             expected_root = (media_root / 'skills' / str(self.project_id) / str(self.id)).resolve(strict=False)
             target = Path(full_path).resolve(strict=False)
+            # 条件：路径精确匹配预期目录；动作：递归删除；结果：防止误删非 Skill 目录。
             if target == expected_root and target.exists():
                 shutil.rmtree(target, ignore_errors=True)
             elif target.exists():
+                # 路径异常时仅告警不删除，避免潜在路径拼接错误导致数据破坏。
                 logger.warning("Refusing to delete unexpected Skill path: %s (expected %s)", target, expected_root)
         super().delete(*args, **kwargs)
