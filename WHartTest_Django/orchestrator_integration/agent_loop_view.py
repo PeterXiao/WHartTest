@@ -42,7 +42,11 @@ from langchain_core.messages import (
 from langchain.agents import create_agent
 from wharttest_django.checkpointer import get_async_checkpointer
 
-from .middleware_config import get_middleware_from_config, get_user_tool_approvals
+from .middleware_config import (
+    get_middleware_from_config,
+    get_user_tool_approvals,
+    get_user_friendly_llm_error,
+)
 from .playwright_instructions import PLAYWRIGHT_SCRIPT_INSTRUCTION
 from .stop_signal import should_stop, clear_stop_signal
 from langgraph_integration.models import ChatSession, LLMConfig
@@ -65,9 +69,28 @@ from requirements.context_limits import (
 logger = logging.getLogger(__name__)
 
 
+def _build_sse_error_event(exc: Exception) -> Dict[str, Any]:
+    friendly_error = get_user_friendly_llm_error(exc)
+    if friendly_error:
+        event = {
+            "type": "error",
+            "message": friendly_error["message"],
+            "code": friendly_error["status_code"],
+            "error_code": friendly_error["error_code"],
+            "errors": friendly_error["errors"],
+        }
+        if friendly_error.get("model"):
+            event["model"] = friendly_error["model"]
+        if friendly_error.get("reset_time"):
+            event["retry_after"] = friendly_error["reset_time"]
+        if friendly_error.get("reset_seconds") is not None:
+            event["retry_after_seconds"] = friendly_error["reset_seconds"]
+        return event
+
+    return {"type": "error", "message": f"执行错误: {str(exc)}", "code": 500}
+
+
 # ============== 统一响应辅助函数 ==============
-
-
 
 
 def api_success_response(
@@ -1194,19 +1217,29 @@ class AgentLoopStreamAPIView(View):
                                     )
 
                 except Exception as e:
-                    logger.error(
-                        "AgentLoopStreamAPI: Streaming error. session_id=%s, thread_id=%s, "
-                        "model=%s, error_type=%s, error=%s",
-                        session_id,
-                        thread_id,
-                        model_name,
-                        type(e).__name__,
-                        e,
-                        exc_info=True,
-                    )
-                    yield create_sse_data(
-                        {"type": "error", "message": f"Streaming error: {str(e)}"}
-                    )
+                    friendly_error = get_user_friendly_llm_error(e)
+                    if friendly_error:
+                        logger.warning(
+                            "AgentLoopStreamAPI: Friendly model error. session_id=%s, error_code=%s, message=%s",
+                            session_id,
+                            friendly_error.get("error_code"),
+                            friendly_error.get("message"),
+                        )
+                        yield create_sse_data(_build_sse_error_event(e))
+                    else:
+                        logger.error(
+                            "AgentLoopStreamAPI: Streaming error. session_id=%s, thread_id=%s, "
+                            "model=%s, error_type=%s, error=%s",
+                            session_id,
+                            thread_id,
+                            model_name,
+                            type(e).__name__,
+                            e,
+                            exc_info=True,
+                        )
+                        yield create_sse_data(
+                            {"type": "error", "message": f"Streaming error: {str(e)}"}
+                        )
 
                 # 16. 处理结束状态
                 # 无论是否发生 interrupt，都需要计算和发送 context_update
@@ -1264,17 +1297,29 @@ class AgentLoopStreamAPIView(View):
                 yield "data: [DONE]\n\n"
 
         except Exception as e:
-            logger.error(
-                "AgentLoopStreamAPI: Error. session_id=%s, thread_id=%s, model=%s, "
-                "error_type=%s, error=%s",
-                session_id,
-                thread_id,
-                model_name if "model_name" in locals() else "unknown",
-                type(e).__name__,
-                e,
-                exc_info=True,
-            )
-            yield create_sse_data({"type": "error", "message": f"执行错误: {str(e)}"})
+            friendly_error = get_user_friendly_llm_error(e)
+            if friendly_error:
+                logger.warning(
+                    "AgentLoopStreamAPI: Friendly model error. session_id=%s, error_code=%s, message=%s",
+                    session_id,
+                    friendly_error.get("error_code"),
+                    friendly_error.get("message"),
+                )
+                yield create_sse_data(_build_sse_error_event(e))
+            else:
+                logger.error(
+                    "AgentLoopStreamAPI: Error. session_id=%s, thread_id=%s, model=%s, "
+                    "error_type=%s, error=%s",
+                    session_id,
+                    thread_id,
+                    model_name if "model_name" in locals() else "unknown",
+                    type(e).__name__,
+                    e,
+                    exc_info=True,
+                )
+                yield create_sse_data(
+                    {"type": "error", "message": f"执行错误: {str(e)}"}
+                )
 
     async def post(self, request, *args, **kwargs):
         """
@@ -1429,6 +1474,8 @@ class AgentLoopStreamAPIView(View):
         context_token_count = 0
         context_limit = 128000
         error_message = None
+        error_status_code = 500
+        error_details = None
         interrupt_info = None
         script_generation = None
 
@@ -1475,6 +1522,8 @@ class AgentLoopStreamAPIView(View):
                             context_limit = event.get("context_limit", 128000)
                         elif event_type == "error":
                             error_message = event.get("message", "Unknown error")
+                            error_status_code = event.get("code", 500)
+                            error_details = event.get("errors")
                         elif event_type == "interrupt":
                             interrupt_info = {
                                 "interrupt_id": event.get("interrupt_id"),
@@ -1488,7 +1537,9 @@ class AgentLoopStreamAPIView(View):
 
             # 构建响应
             if error_message:
-                return api_error_response(error_message, 500)
+                return api_error_response(
+                    error_message, error_status_code, error_details
+                )
 
             response_data = {
                 "session_id": final_session_id,
@@ -1517,6 +1568,13 @@ class AgentLoopStreamAPIView(View):
                 e,
                 exc_info=True,
             )
+            friendly_error = get_user_friendly_llm_error(e)
+            if friendly_error:
+                return api_error_response(
+                    friendly_error["message"],
+                    friendly_error["status_code"],
+                    friendly_error["errors"],
+                )
             return api_error_response(f"执行错误: {str(e)}", 500)
 
 
@@ -1973,12 +2031,22 @@ class AgentLoopResumeAPIView(View):
                                     )
 
                 except Exception as e:
-                    logger.error(
-                        f"AgentLoopResumeAPI: Streaming error: {e}", exc_info=True
-                    )
-                    yield create_sse_data(
-                        {"type": "error", "message": f"Streaming error: {str(e)}"}
-                    )
+                    friendly_error = get_user_friendly_llm_error(e)
+                    if friendly_error:
+                        logger.warning(
+                            "AgentLoopResumeAPI: Friendly model error. session_id=%s, error_code=%s, message=%s",
+                            session_id,
+                            friendly_error.get("error_code"),
+                            friendly_error.get("message"),
+                        )
+                        yield create_sse_data(_build_sse_error_event(e))
+                    else:
+                        logger.error(
+                            "AgentLoopResumeAPI: Streaming error: %s", e, exc_info=True
+                        )
+                        yield create_sse_data(
+                            {"type": "error", "message": f"Streaming error: {str(e)}"}
+                        )
 
                 # 10. 处理结束状态
                 # 无论是否发生 interrupt，都需要计算和发送 context_update
@@ -2032,10 +2100,21 @@ class AgentLoopResumeAPIView(View):
                 yield "data: [DONE]\n\n"
 
         except Exception as e:
-            logger.exception(
-                f"AgentLoopResumeAPI: Error in resume stream for session {session_id}"
-            )
-            yield create_sse_data({"type": "error", "message": str(e)})
+            friendly_error = get_user_friendly_llm_error(e)
+            if friendly_error:
+                logger.warning(
+                    "AgentLoopResumeAPI: Friendly model error. session_id=%s, error_code=%s, message=%s",
+                    session_id,
+                    friendly_error.get("error_code"),
+                    friendly_error.get("message"),
+                )
+                yield create_sse_data(_build_sse_error_event(e))
+            else:
+                logger.exception(
+                    "AgentLoopResumeAPI: Error in resume stream for session %s",
+                    session_id,
+                )
+                yield create_sse_data({"type": "error", "message": str(e)})
 
     async def post(self, request, *args, **kwargs):
         """处理 HITL resume 请求 - 返回 SSE 流式响应"""

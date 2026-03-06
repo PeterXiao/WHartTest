@@ -147,7 +147,7 @@ class SkillViewSet(BaseModelViewSet):
     @action(detail=False, methods=['post'], url_path='import-git')
     def import_git(self, request, *args, **kwargs):
         """
-        从 Git 仓库导入 Skill
+        从 Git 仓库导入 Skills（支持仓库包含多个 Skill）
 
         请求：application/json，包含 git_url（必填）和 branch（可选）
         """
@@ -159,20 +159,19 @@ class SkillViewSet(BaseModelViewSet):
         project = self.get_project()
 
         try:
-            # 条件：仓库地址与分支校验通过；动作：克隆并导入 Skill；结果：返回导入后的 Skill 数据。
-            skill = Skill.create_from_git(
+            skills = Skill.create_from_git(
                 git_url=git_url,
                 branch=branch,
                 project=project,
                 creator=request.user
             )
+            names = ', '.join(s.name for s in skills)
             return Response({
                 'code': 201,
-                'message': f"Skill '{skill.name}' 导入成功",
-                'data': SkillSerializer(skill).data
+                'message': f"成功导入 {len(skills)} 个 Skill: {names}",
+                'data': SkillSerializer(skills, many=True).data
             }, status=status.HTTP_201_CREATED)
         except ValidationError as e:
-            # 业务可预期错误（如仓库无 SKILL.md）返回 400。
             msg = e.messages[0] if hasattr(e, 'messages') and e.messages else str(e)
             return Response({
                 'code': 400,
@@ -180,7 +179,6 @@ class SkillViewSet(BaseModelViewSet):
                 'data': None
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            # 非预期异常统一记日志并返回 500。
             logger.exception("Skill git import failed: %s", e)
             return Response({
                 'code': 500,

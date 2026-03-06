@@ -32,6 +32,7 @@ from prompts.models import UserPrompt
 from orchestrator_integration.middleware_config import (
     get_standard_middleware,
     get_middleware_from_config,
+    get_user_friendly_llm_error,
 )
 
 
@@ -123,8 +124,6 @@ from requirements.models import RequirementDocument
 logger = logging.getLogger(__name__)  # Initialize logger
 
 
-
-
 # --- 辅助函数 ---
 def create_llm_instance(active_config, temperature=0.7):
     """
@@ -213,8 +212,6 @@ def create_sse_data(data_dict):
     """
     json_str = json.dumps(data_dict, ensure_ascii=False)
     return f"data: {json_str}\n\n"
-
-
 
 
 _REQ_DOC_ID_RE = re.compile(r"需求文档ID[:：]\s*([0-9a-fA-F-]{36})")
@@ -370,8 +367,6 @@ class LLMConfigViewSet(BaseModelViewSet):
     提供完整的CRUD操作
     """
 
-
-
     queryset = LLMConfig.objects.all().order_by("-created_at")
     serializer_class = LLMConfigSerializer
 
@@ -421,7 +416,6 @@ class LLMConfigViewSet(BaseModelViewSet):
         """
         import requests as http_requests
 
-
         api_url = request.data.get("api_url", "").rstrip("/")
         api_key = request.data.get("api_key", "")
         config_id = request.data.get("config_id")
@@ -454,7 +448,6 @@ class LLMConfigViewSet(BaseModelViewSet):
             resp = http_requests.get(f"{api_url}/models", headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
-
 
             if data.get("data"):
                 models = [model.get("id") for model in data["data"] if model.get("id")]
@@ -1438,7 +1431,6 @@ class ChatAPIView(APIView):
                             msg_type = "unknown"
                             content = ""
 
-
                             if isinstance(msg, SystemMessage):
                                 msg_type = "system"
                                 content = (
@@ -1534,6 +1526,18 @@ class ChatAPIView(APIView):
                 f"ChatAPIView: Error interacting with LLM or LangGraph: {e}",
                 exc_info=True,
             )
+            friendly_error = get_user_friendly_llm_error(e)
+            if friendly_error:
+                return Response(
+                    {
+                        "status": "error",
+                        "code": friendly_error["status_code"],
+                        "message": friendly_error["message"],
+                        "data": {},
+                        "errors": friendly_error["errors"],
+                    },
+                    status=friendly_error["status_code"],
+                )
             return Response(
                 {
                     "status": "error",
@@ -1808,8 +1812,6 @@ class ChatHistoryAPIView(APIView):
                                     max_steps = None
                                     sse_event_type = None
 
-
-
                                     if (
                                         hasattr(msg, "additional_kwargs")
                                         and msg.additional_kwargs
@@ -1950,8 +1952,6 @@ class ChatHistoryAPIView(APIView):
                                         try:
                                             # 解析ISO时间戳并转换为本地时间
                                             from datetime import datetime
-
-
 
                                             dt = datetime.fromisoformat(
                                                 timestamp_str.replace("Z", "+00:00")
@@ -2251,7 +2251,6 @@ class ChatHistoryAPIView(APIView):
                 message = f"Successfully rolled back chat history for session_id: {session_id}. Kept {keep_count} checkpoints, removed {deleted_count} checkpoints."
             else:
                 message = f"No checkpoints to remove for session_id: {session_id}. Current count is already at or below {keep_count}."
-
 
             logger.info(f"ChatHistoryAPIView PATCH: {message}")
 
@@ -2765,12 +2764,24 @@ class ChatResumeAPIView(View):
                         f"ChatResumeAPIView: Error during resume streaming: {e}",
                         exc_info=True,
                     )
-                    yield create_sse_data(
-                        {
-                            "type": "error",
-                            "message": f"Resume streaming error: {str(e)}",
-                        }
-                    )
+                    friendly_error = get_user_friendly_llm_error(e)
+                    if friendly_error:
+                        yield create_sse_data(
+                            {
+                                "type": "error",
+                                "message": friendly_error["message"],
+                                "code": friendly_error["status_code"],
+                                "error_code": friendly_error["error_code"],
+                                "errors": friendly_error["errors"],
+                            }
+                        )
+                    else:
+                        yield create_sse_data(
+                            {
+                                "type": "error",
+                                "message": f"Resume streaming error: {str(e)}",
+                            }
+                        )
 
                 # 如果已经在流中检测到中断，直接返回
                 if interrupt_detected:
@@ -2858,9 +2869,21 @@ class ChatResumeAPIView(View):
             logger.error(
                 f"ChatResumeAPIView: Error in resume generator: {e}", exc_info=True
             )
-            yield create_sse_data(
-                {"type": "error", "message": f"Resume error: {str(e)}"}
-            )
+            friendly_error = get_user_friendly_llm_error(e)
+            if friendly_error:
+                yield create_sse_data(
+                    {
+                        "type": "error",
+                        "message": friendly_error["message"],
+                        "code": friendly_error["status_code"],
+                        "error_code": friendly_error["error_code"],
+                        "errors": friendly_error["errors"],
+                    }
+                )
+            else:
+                yield create_sse_data(
+                    {"type": "error", "message": f"Resume error: {str(e)}"}
+                )
 
     async def post(self, request, *args, **kwargs):
         """处理 HITL 恢复请求"""
@@ -2873,13 +2896,10 @@ class ChatResumeAPIView(View):
         except AuthenticationFailed as e:
             from django.http import JsonResponse
 
-
             return JsonResponse({"error": str(e), "code": 401}, status=401)
 
         try:
             import json as json_module
-
-
 
             body_data = json_module.loads(request.body.decode("utf-8"))
         except (json_module.JSONDecodeError, UnicodeDecodeError) as e:
@@ -2896,15 +2916,12 @@ class ChatResumeAPIView(View):
         if not project_id:
             from django.http import JsonResponse
 
-
-
             return JsonResponse(
                 {"error": "project_id is required", "code": 400}, status=400
             )
 
         if not session_id:
             from django.http import JsonResponse
-
 
             return JsonResponse(
                 {"error": "session_id is required", "code": 400}, status=400
@@ -2916,7 +2933,6 @@ class ChatResumeAPIView(View):
         )
         if not project:
             from django.http import JsonResponse
-
 
             return JsonResponse(
                 {"error": "Project access denied", "code": 403}, status=403
@@ -3164,8 +3180,6 @@ class UserToolApprovalViewSet(viewsets.ModelViewSet):
         # 注意：Diagram 工具（display_diagram, edit_diagram）已移至 WHartTest-Tools MCP
         from mcp_tools.models import RemoteMCPConfig
 
-
-
         mcp_configs = RemoteMCPConfig.objects.filter(is_active=True).prefetch_related(
             "tools"
         )
@@ -3391,8 +3405,6 @@ class TokenUsageStatsAPIView(APIView):
 
         # 构建查询
         import logging
-
-
 
         logger = logging.getLogger("langgraph_integration")
         logger.info(
