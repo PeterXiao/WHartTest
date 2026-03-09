@@ -659,21 +659,20 @@ const loadSessionsFromServer = async () => {
       if (sessionsDetail && sessionsDetail.length > 0) {
         // 直接使用后端返回的会话详情
         const tempSessions: ChatSession[] = sessionsDetail.map(detail => {
-          let lastTime = new Date();
-          if (detail.updated_at) {
+          const timeStr = detail.updated_at || detail.created_at;
+          let lastTime: Date | null = null;
+          if (timeStr) {
             try {
-              lastTime = new Date(detail.updated_at.replace(' ', 'T'));
-              if (isNaN(lastTime.getTime())) {
-                lastTime = new Date();
+              const parsed = new Date(timeStr.replace(' ', 'T'));
+              if (!isNaN(parsed.getTime())) {
+                lastTime = parsed;
               }
-            } catch {
-              lastTime = new Date();
-            }
+            } catch { /* 解析失败时 lastTime 保持 null */ }
           }
           return {
             id: detail.id,
             title: detail.title || '未命名对话',
-            lastTime,
+            lastTime: lastTime ?? new Date(0),
             messageCount: 0
           };
         });

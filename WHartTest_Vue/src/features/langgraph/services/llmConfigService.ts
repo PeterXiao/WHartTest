@@ -274,7 +274,7 @@ export async function getActiveLlmConfig(): Promise<ApiResponse<LlmConfig | null
 
 /**
  * 从 LLM API 获取可用模型列表
- * @param apiUrl API URL
+ * @param apiUrl API 地址
  * @param apiKey API Key（可选，编辑模式下可从数据库获取）
  * @param configId 配置ID（可选，用于编辑模式从数据库获取 API Key）
  */
