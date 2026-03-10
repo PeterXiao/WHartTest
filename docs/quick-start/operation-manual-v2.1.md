@@ -12,6 +12,7 @@
 - 支持批量并发执行、执行器配置管理、执行记录按项目过滤。
 - 新增 Playwright 执行追踪录制与可视化回放能力。
 
+
 ### LangGraph 与模型能力升级
 
 - 新增多供应商 LLM 支持并集成通义千问（Qwen）。
@@ -119,3 +120,4 @@
 2. Docker 本地开发建议使用：`./scripts/run_local_compose.sh docker-compose.local.yml`。
 3. 若需启用 `xinference`，请在 compose 文件中手动开启对应服务。
 4. 若依赖 Draw.io 自托管能力，请调整为官方在线模式或自行扩展代理方案。
+5. 提示：此版本去掉了UI自动化脚本库，重构成了UI自动化模块，升级此版本会造成数据丢失，请提前备份。
