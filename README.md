@@ -150,14 +150,14 @@ DOCKER_BUILD_NO_CACHE=1 ./run_compose.sh local
 
 | | |
   |---|---|
-  | ![alt text](docs\public\img\image-a1.png) | ![alt text](docs\public\img\image-a2.png) |
-  | ![alt text](docs\public\img\image-a3.png)| ![alt text](docs\public\img\image-a4.png) |
-  | ![alt text](docs\public\img\image-a5.png) | ![alt text](docs\public\img\image-a17.png) |
-  | ![alt text](docs\public\img\image-a7.png) | ![alt text](docs\public\img\image-a8.png) |
-  | ![alt text](docs\public\img\image-a9.png) | ![alt text](docs\public\img\image-a10.png) |
-  | ![alt text](docs\public\img\image-a11.png) | ![alt text](docs\public\img\image-a12.png) |
-  | ![alt text](docs\public\img\image-a13.png) | ![alt text](docs\public\img\image-a14.png) |
-  | ![alt text](docs\public\img\image-a15.png) | ![alt text](docs\public\img\image-a16.png) |
+  | ![alt text](docs/public/img/image-a1.png) | ![alt text](docs/public/img/image-a2.png) |
+  | ![alt text](docs/public/img/image-a3.png) | ![alt text](docs/public/img/image-a4.png) |
+  | ![alt text](docs/public/img/image-a5.png) | ![alt text](docs/public/img/image-a17.png) |
+  | ![alt text](docs/public/img/image-a7.png) | ![alt text](docs/public/img/image-a8.png) |
+  | ![alt text](docs/public/img/image-a9.png) | ![alt text](docs/public/img/image-a10.png) |
+  | ![alt text](docs/public/img/image-a11.png) | ![alt text](docs/public/img/image-a12.png) |
+  | ![alt text](docs/public/img/image-a13.png) | ![alt text](docs/public/img/image-a14.png) |
+  | ![alt text](docs/public/img/image-a15.png) | ![alt text](docs/public/img/image-a16.png) |
 ## 贡献指南
 
 1. Fork 项目
@@ -174,7 +174,7 @@ DOCKER_BUILD_NO_CACHE=1 ./run_compose.sh local
 - 添加微信时请备注   github   ，拉你进微信群聊。
 - 加群获取最新更新信息及SKill。
 
-<img width="400" alt="image" src="docs\public\img\wx.jpg" />
+<img width="400" alt="image" src="docs/public/img/wx.jpg" />
 
 qq群：
 1. 8xxxxxxxx0（已满）
