@@ -1,5 +1,9 @@
 # WHartTest - AI驱动的智能测试用例生成平台
 
+[![Nerq Trust Score](https://nerq.ai/badge/MGdaasLab/WHartTest)](https://nerq.ai/safe/MGdaasLab/WHartTest)
+
+中文 | [English](README_EN.md)
+
 ## 项目简介
 
 WHartTest 是一个基于 Django REST Framework 构建的AI驱动测试自动化平台，核心功能是通过AI智能生成测试用例。平台集成了 LangChain、MCP（Model Context Protocol）工具调用、项目管理、需求评审、测试用例管理以及先进的知识库管理和文档理解功能。利用大语言模型和多种嵌入服务（OpenAI、Azure OpenAI、Ollama等）的能力，自动化生成高质量的测试用例，并结合知识库提供更精准的测试辅助，为测试团队提供一个完整的智能测试管理解决方案。
