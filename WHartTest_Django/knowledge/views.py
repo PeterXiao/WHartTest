@@ -34,6 +34,29 @@ import time
 logger = logging.getLogger(__name__)
 
 
+def _mask_secret(secret):
+    """对敏感字段进行脱敏展示。"""
+    if not secret:
+        return secret
+    if len(secret) > 8:
+        return secret[:4] + "*" * (len(secret) - 8) + secret[-4:]
+    return "*" * len(secret)
+
+
+def _restore_masked_secret(candidate, stored_secret):
+    """
+    将前端回传的脱敏值还原为数据库中的真实密钥。
+
+    前端 GET 全局配置时会拿到脱敏后的 api_key / reranker_api_key，
+    如果用户未修改该字段直接测试或保存，后端需要识别这种占位值并保留真实密钥。
+    """
+    if not candidate or not stored_secret:
+        return candidate
+    if candidate == _mask_secret(stored_secret):
+        return stored_secret
+    return candidate
+
+
 def _dispatch_document_task(document):
     """派发文档处理任务：优先 Celery，不可用时同步执行"""
     from .tasks import process_document_task
@@ -60,19 +83,9 @@ class KnowledgeGlobalConfigView(APIView):
         data = serializer.data
         # 对API Key进行脱敏处理
         if data.get("api_key"):
-            api_key = data["api_key"]
-            if len(api_key) > 8:
-                data["api_key"] = api_key[:4] + "*" * (len(api_key) - 8) + api_key[-4:]
-            else:
-                data["api_key"] = "*" * len(api_key)
+            data["api_key"] = _mask_secret(data["api_key"])
         if data.get("reranker_api_key"):
-            api_key = data["reranker_api_key"]
-            if len(api_key) > 8:
-                data["reranker_api_key"] = (
-                    api_key[:4] + "*" * (len(api_key) - 8) + api_key[-4:]
-                )
-            else:
-                data["reranker_api_key"] = "*" * len(api_key)
+            data["reranker_api_key"] = _mask_secret(data["reranker_api_key"])
         return Response(data)
 
     def put(self, request):
@@ -84,9 +97,17 @@ class KnowledgeGlobalConfigView(APIView):
             )
 
         config = KnowledgeGlobalConfig.get_config()
-        serializer = KnowledgeGlobalConfigSerializer(
-            config, data=request.data, partial=True
-        )
+        data = request.data.copy()
+        if "api_key" in data:
+            data["api_key"] = _restore_masked_secret(
+                data.get("api_key"), config.api_key
+            )
+        if "reranker_api_key" in data:
+            data["reranker_api_key"] = _restore_masked_secret(
+                data.get("reranker_api_key"), config.reranker_api_key
+            )
+
+        serializer = KnowledgeGlobalConfigSerializer(config, data=data, partial=True)
 
         if serializer.is_valid():
             serializer.save(updated_by=request.user)
@@ -635,9 +656,14 @@ def test_embedding_connection(request):
     """测试嵌入服务连接"""
     import requests as http_requests
 
+    config = KnowledgeGlobalConfig.get_config()
     embedding_service = request.data.get("embedding_service")
     api_base_url = request.data.get("api_base_url", "").rstrip("/")
-    api_key = request.data.get("api_key", "")
+    api_key = request.data.get("api_key")
+    if api_key is None:
+        api_key = config.api_key or ""
+    else:
+        api_key = _restore_masked_secret(api_key, config.api_key)
     model_name = request.data.get("model_name", "")
 
     logger.info(
@@ -774,9 +800,16 @@ def test_reranker_connection(request):
     """测试 Reranker 服务连接"""
     import requests as http_requests
 
+    config = KnowledgeGlobalConfig.get_config()
     reranker_service = request.data.get("reranker_service")
     reranker_api_url = request.data.get("reranker_api_url", "").rstrip("/")
-    reranker_api_key = request.data.get("reranker_api_key", "")
+    reranker_api_key = request.data.get("reranker_api_key")
+    if reranker_api_key is None:
+        reranker_api_key = config.reranker_api_key or ""
+    else:
+        reranker_api_key = _restore_masked_secret(
+            reranker_api_key, config.reranker_api_key
+        )
     reranker_model_name = request.data.get("reranker_model_name", "")
 
     logger.info(
