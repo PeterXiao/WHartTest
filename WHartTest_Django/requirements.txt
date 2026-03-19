@@ -52,6 +52,10 @@ langchain==1.2.3
 # https://github.com/langchain-ai/langchain/blob/master/libs/partners/openai/LICENSE
 langchain-openai==1.1.7
 
+# LangChain Qwen集成 - MIT许可证
+# https://github.com/langchain-ai/langchain-qwq/blob/main/LICENSE
+langchain-qwq==0.3.4
+
 # LangChain Anthropic/Claude 支持（已移除 - 保留注释以便记录）
 # 如果将来需要使用 Anthropic/Claude，请取消注释以下依赖：
 # langchain-anthropic>=0.3.0
@@ -206,6 +210,14 @@ docx2txt==0.9
 # https://github.com/decalage2/olefile/blob/master/LICENSE.txt
 olefile>=0.46
 
+# 图片处理 - HPND许可证 (当前版本: 11.3.0)
+# https://github.com/python-pillow/Pillow/blob/main/LICENSE
+Pillow==11.3.0
+
+# PDF图片提取 - AGPL许可证 (当前版本: 1.26.7)
+# https://github.com/pymupdf/PyMuPDF/blob/main/COPYING
+PyMuPDF==1.26.7
+
 # Markdown文档处理 - BSD许可证 (当前版本: 3.9)
 # https://github.com/Python-Markdown/markdown/blob/master/LICENSE.md
 markdown==3.9
@@ -242,6 +254,10 @@ langdetect==1.0.9
 # https://github.com/celery/celery/blob/main/LICENSE
 celery==5.4.0
 
+# Celery Beat 数据库调度器 - BSD许可证
+# https://github.com/celery/django-celery-beat/blob/main/LICENSE
+django-celery-beat==2.8.1
+
 # Redis客户端(用作Celery的broker和backend) - MIT许可证 (当前版本: 5.2.0)
 # https://github.com/redis/redis-py/blob/master/LICENSE
 redis==5.2.0
@@ -262,6 +278,10 @@ pytest>=8.0.0
 # Playwright浏览器自动化 - Apache 2.0许可证
 # https://github.com/microsoft/playwright-python/blob/main/LICENSE
 playwright>=1.40.0
+
+# Pillow图像处理库 - MIT-CMU许可证（用于Word文档图片尺寸解析）
+# https://github.com/python-pillow/Pillow/blob/main/LICENSE
+Pillow>=10.0.0
 
 # Token计数库 - MIT许可证 (用于上下文长度计算)
 # https://github.com/openai/tiktoken/blob/main/LICENSE

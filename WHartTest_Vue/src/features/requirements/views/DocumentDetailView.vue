@@ -458,7 +458,7 @@ import { useProjectStore } from '@/store/projectStore';
 const route = useRoute();
 const router = useRouter();
 
-// Store
+// 状态仓库
 const projectStore = useProjectStore();
 
 // 响应式数据
@@ -1192,7 +1192,9 @@ onBeforeUnmount(() => {
 .document-detail {
   padding: 24px;
   background: transparent; /* 使用主布局的背景 */
-  min-height: 100%; /* 适应父容器 */
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .page-header {
@@ -1844,7 +1846,7 @@ onBeforeUnmount(() => {
   border-left: 4px solid #e5e6eb;
   padding-left: 16px;
   margin: 1em 0;
-  color: #666;
+  color: var(--theme-text-secondary);
 }
 
 /* 图片样式 */
@@ -1892,7 +1894,7 @@ onBeforeUnmount(() => {
 
 .selected-titles {
   font-weight: normal;
-  color: #666;
+  color: var(--theme-text-secondary);
   margin-left: 8px;
 }
 
@@ -1979,7 +1981,7 @@ onBeforeUnmount(() => {
   font-size: 12px; /* 稍小的字体大小 */
   line-height: 1.4;
   margin: 0;
-  color: #666; /* 提示文字用稍浅的颜色 */
+  color: var(--theme-text-secondary);
   display: flex;
   align-items: center; /* 内容文字垂直居中 */
 }

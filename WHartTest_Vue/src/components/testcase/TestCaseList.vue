@@ -344,7 +344,7 @@ const columns = [
     title: '创建时间',
     dataIndex: 'created_at',
     render: ({ record }: { record: TestCase }) => formatDate(record.created_at),
-    width: 100,
+    width: 130,
     align: 'center',
   },
   { title: '操作', slotName: 'operations', width: 200, fixed: 'right', align: 'center' },

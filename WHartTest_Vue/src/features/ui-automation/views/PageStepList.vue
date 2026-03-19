@@ -20,6 +20,7 @@
           allow-clear
           style="width: 200px"
           @search="onSearch"
+          @clear="onSearch"
         />
       </div>
       <div class="action-buttons">
@@ -57,7 +58,7 @@
         <a-space :size="4">
           <a-button type="text" size="mini" @click="viewStepDetails(record)">
             <template #icon><icon-settings /></template>
-            详情
+            添加步骤
           </a-button>
           <a-button type="text" size="mini" @click="editPageStep(record)">
             <template #icon><icon-edit /></template>
@@ -206,12 +207,14 @@ const onFormModuleChange = () => {
   formData.page = undefined as unknown as number
 }
 
-const flattenModules = (modules: UiModule[], level = 0): UiModule[] => {
+const flattenModules = (modules: UiModule[], level = 0, visited = new Set<number>()): UiModule[] => {
   const result: UiModule[] = []
   for (const mod of modules) {
-    result.push({ ...mod, name: '  '.repeat(level) + mod.name })
+    if (visited.has(mod.id)) continue
+    visited.add(mod.id)
+    result.push({ ...mod, name: '\u00A0\u00A0'.repeat(level) + mod.name })
     if (mod.children?.length) {
-      result.push(...flattenModules(mod.children as UiModule[], level + 1))
+      result.push(...flattenModules(mod.children as UiModule[], level + 1, visited))
     }
   }
   return result
@@ -220,8 +223,9 @@ const flattenModules = (modules: UiModule[], level = 0): UiModule[] => {
 const fetchModules = async () => {
   if (!projectId.value) return
   try {
-    const res = await moduleApi.list({ project: projectId.value })
-    moduleOptions.value = flattenModules(extractListData<UiModule>(res))
+    const res = await moduleApi.tree(projectId.value)
+    const modules = extractResponseData<UiModule[]>(res) || []
+    moduleOptions.value = flattenModules(modules)
   } catch {
     Message.error('获取模块列表失败')
   }
@@ -359,8 +363,9 @@ const deletePageStep = async (record: UiPageSteps) => {
     await pageStepsApi.delete(record.id)
     Message.success('删除成功')
     fetchPageSteps()
-  } catch {
-    Message.error('删除失败')
+  } catch (error: unknown) {
+    const err = error as { error?: string }
+    Message.error(err?.error || '存在关联，无法删除。请先解除关联')
   }
 }
 

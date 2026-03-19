@@ -249,7 +249,7 @@ const formData = reactive<KnowledgeGlobalConfig>({
   reranker_service: 'none',
   reranker_api_url: '',
   reranker_api_key: '',
-  reranker_model_name: 'bge-reranker-v2-m3',
+  reranker_model_name: 'Qwen3-VL-Reranker-2B',
   chunk_size: 1000,
   chunk_overlap: 200,
   updated_at: '',
@@ -339,8 +339,8 @@ const handleEmbeddingServiceChange = (value: EmbeddingServiceType) => {
       formData.api_key = '';
       break;
     case 'xinference':
-      formData.api_base_url = 'http://localhost:9997';
-      formData.model_name = 'bge-m3';
+      formData.api_base_url = 'http://127.0.0.1:8917';
+      formData.model_name = 'qwen3-vl-emb-2b';
       formData.api_key = '';
       break;
     case 'custom':
@@ -357,16 +357,16 @@ const handleRerankerServiceChange = (value: RerankerServiceType) => {
       formData.reranker_api_url = '';
       // 保留默认模型名，不清空
       if (!formData.reranker_model_name) {
-        formData.reranker_model_name = 'bge-reranker-v2-m3';
+        formData.reranker_model_name = 'Qwen3-VL-Reranker-2B';
       }
       break;
     case 'xinference':
       formData.reranker_api_url = '';
-      formData.reranker_model_name = 'bge-reranker-v2-m3';
+      formData.reranker_model_name = 'Qwen3-VL-Reranker-2B';
       break;
     case 'custom':
       formData.reranker_api_url = 'http://your-reranker-service:8080/v1/rerank';
-      formData.reranker_model_name = 'bge-reranker-v2-m3';
+      formData.reranker_model_name = 'Qwen3-VL-Reranker-2B';
       break;
   }
 };

@@ -63,7 +63,6 @@
                 <span class="info-label">参数:</span>
                 <span class="ope-value">{{ formatOpeValue(element.ope_value) }}</span>
               </span>
-              <span v-if="element.func" class="func-code">Python代码</span>
               <span v-if="element.sql_execute && Object.keys(element.sql_execute).length > 0" class="sql-info">SQL操作</span>
               <span v-if="element.custom && Object.keys(element.custom).length > 0" class="custom-info">自定义变量</span>
               <span v-if="element.condition_value && Object.keys(element.condition_value).length > 0" class="condition-info">条件判断</span>
@@ -224,13 +223,6 @@
           </a-form-item>
         </template>
 
-        <!-- Python 代码 -->
-        <template v-else-if="formData.step_type === 5">
-          <a-form-item field="func" label="Python 代码">
-            <a-textarea v-model="formData.func" placeholder="输入 Python 代码" :auto-size="{ minRows: 5 }" />
-          </a-form-item>
-        </template>
-
         <a-form-item field="description" label="描述">
           <a-input v-model="formData.description" placeholder="可选描述" />
         </a-form-item>
@@ -351,6 +343,7 @@ const onOpeKeyChange = () => {
 
 const rules = {
   step_type: [{ required: true, message: '请选择操作类型' }],
+  // 动态验证规则将在提交时检查
 }
 
 const stepTypeColors: Record<StepType, string> = {
@@ -359,7 +352,6 @@ const stepTypeColors: Record<StepType, string> = {
   2: 'purple',
   3: 'green',
   4: 'magenta',
-  5: 'red',
 }
 
 const fetchSteps = async () => {
@@ -395,10 +387,15 @@ const fetchEnvConfigs = async () => {
     // 从页面步骤获取关联的项目ID
     const res = await envConfigApi.list({ project: props.pageStep.project })
     envConfigs.value = extractListData<UiEnvironmentConfig>(res)
-    // 自动选择默认环境
-    if (!selectedEnvConfig.value) {
+    // 优先选择默认环境，如果没有默认环境则选择第一个环境配置
+    if (!selectedEnvConfig.value && envConfigs.value.length > 0) {
       const defaultEnv = envConfigs.value.find(e => e.is_default)
-      if (defaultEnv) selectedEnvConfig.value = defaultEnv.id
+      if (defaultEnv) {
+        selectedEnvConfig.value = defaultEnv.id
+      } else {
+        // 如果没有默认环境，选择第一个环境配置
+        selectedEnvConfig.value = envConfigs.value[0].id
+      }
     }
   } catch {
     // 静默失败
@@ -515,6 +512,12 @@ const editStep = (step: UiPageStepsDetailed) => {
   Object.keys(opeParams).forEach(k => delete opeParams[k])
   if (step.ope_value && typeof step.ope_value === 'object') {
     Object.assign(opeParams, step.ope_value)
+    
+    // 兼容性处理：如果 ope_value 使用 'value' 字段而不是 'text' 字段，进行转换
+    if (step.ope_key === 'fill' && step.ope_value.value !== undefined && step.ope_value.text === undefined) {
+      // 将 value 字段的内容复制到 text 字段，以兼容前端表单
+      opeParams.text = step.ope_value.value
+    }
   }
   sqlExecuteStr.value = JSON.stringify(step.sql_execute || {}, null, 2)
   customStr.value = JSON.stringify(step.custom || {}, null, 2)
@@ -538,6 +541,13 @@ const buildOpeValue = () => {
       result[k] = v
     }
   }
+  
+  // 兼容性处理：对于 fill 操作，如果存在 text 字段，也同步到 value 字段
+  // 这样后端执行器可以正确识别两种格式
+  if (formData.ope_key === 'fill' && result.text !== undefined) {
+    result.value = result.text
+  }
+  
   return Object.keys(result).length > 0 ? result : undefined
 }
 
@@ -548,6 +558,16 @@ const handleSubmit = async (done: (closed: boolean) => void) => {
     Message.warning('请填写必填项')
     done(false)
     return
+  }
+  
+  // 额外的业务逻辑校验：对于 fill 操作，必须填写输入内容
+  if (formData.ope_key === 'fill') {
+    const textValue = opeParams.text
+    if (!textValue || textValue.trim() === '') {
+      Message.warning('请输入内容')
+      done(false)
+      return
+    }
   }
   submitting.value = true
   try {
@@ -631,9 +651,14 @@ const onDragEnd = async () => {
 // WebSocket 事件监听
 let offStepResult: (() => void) | null = null
 
-watch(() => props.pageStep, () => {
+watch(() => props.pageStep, async () => {
   fetchSteps()
   fetchElements()
+  // 同时获取环境配置和执行器列表，并自动选择默认值
+  await Promise.all([
+    fetchActuators(),
+    fetchEnvConfigs()
+  ])
 }, { immediate: true })
 
 onMounted(() => {
@@ -747,7 +772,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.func-code,
 .sql-info,
 .custom-info,
 .condition-info {

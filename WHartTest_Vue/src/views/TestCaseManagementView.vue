@@ -273,7 +273,7 @@ const handleModuleUpdated = () => {
   // 同时刷新模块数据给表单用
   fetchAllModulesForForm();
   // 如果用例列表依赖模块信息（比如显示模块名），也可能需要刷新用例列表
-  // testCaseListRef.value?.refreshTestCases();
+  // 如需强制刷新用例列表，可在此调用列表刷新方法。
 };
 
 const showAddTestCaseForm = () => {
@@ -558,7 +558,7 @@ const handleExecuteConfirm = (options: { generatePlaywrightScript: boolean }) =>
 2. 调用工具执行测试用例，并验证相应的断言。
 3. 每一步执行后截图，可以单张上传，也可以批量上传。
 4. 必须上传截图以供查看。
-5. 执行结束后告知用户本次测试是否通过，并总结关键截图链接。
+5. 执行结束后告知用户本次测试是否通过，并总结。
 
 附加信息：
 - 测试用例名称：${testCase.name}
@@ -577,7 +577,7 @@ const handleExecuteConfirm = (options: { generatePlaywrightScript: boolean }) =>
   };
 
   const notificationContent = options.generatePlaywrightScript
-    ? '测试用例执行任务已在后台开始处理，完成后将自动生成 Playwright 脚本。'
+    ? '测试用例执行任务已在后台开始处理，完成后将自动生成 UI 自动化用例。'
     : '测试用例执行任务已在后台开始处理。';
 
   startAutomationTask(

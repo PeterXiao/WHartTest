@@ -53,9 +53,8 @@
         </a-card>
       </div>
 
-      <!-- 结果列表 - 使用标签页区分用例和脚本 -->
-      <a-tabs default-active-key="testcases" class="results-tabs">
-        <a-tab-pane key="testcases" :title="`功能用例 (${report.results?.length || 0})`">
+      <!-- 结果列表 -->
+      <div class="results-section">
           <a-table
             v-if="report.results && report.results.length > 0"
             :data="report.results"
@@ -79,10 +78,8 @@
               </a-button>
             </template>
           </a-table>
-          <a-empty v-else description="暂无功能用例执行结果" />
-        </a-tab-pane>
-
-      </a-tabs>
+          <a-empty v-else description="暂无用例执行结果" />
+      </div>
     </div>
   </a-modal>
 
@@ -168,11 +165,11 @@ import {
 } from '@/services/testExecutionService';
 import { formatDateTime, formatDuration } from '@/utils/formatters';
 
-// Types
+// 类型定义
 type ReportData = NonNullable<TestReportResponse['data']>;
 type ReportResult = ReportData['results'][0];
 
-// Props
+// 组件属性
 interface Props {
   visible: boolean;
   currentProjectId: number | null;
@@ -180,12 +177,12 @@ interface Props {
 }
 const props = defineProps<Props>();
 
-// Emits
+// 组件事件
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void;
 }>();
 
-// Data
+// 状态数据
 const loading = ref(false);
 const error = ref('');
 const report = ref<ReportData | null>(null);
@@ -198,7 +195,7 @@ const modalVisible = computed({
   set: (value) => emit('update:visible', value),
 });
 
-// Columns
+// 表格列配置
 const resultColumns = [
   { title: '用例名称', dataIndex: 'testcase_name' },
   { title: '状态', slotName: 'status', width: 100 },
@@ -206,7 +203,7 @@ const resultColumns = [
   { title: '操作', slotName: 'actions', width: 100 },
 ];
 
-// Methods
+// 业务方法
 const fetchReport = async () => {
   if (!props.currentProjectId || !props.executionId) return;
 
@@ -426,7 +423,7 @@ watch(
   }
 );
 
-// Watchers
+// 侦听器
 watch(
   () => props.visible,
   (newVal) => {

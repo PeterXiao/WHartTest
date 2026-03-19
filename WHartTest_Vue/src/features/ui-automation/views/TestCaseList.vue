@@ -31,6 +31,7 @@
           allow-clear
           style="width: 200px"
           @search="onSearch"
+          @clear="onSearch"
         />
       </div>
       <div class="action-buttons">
@@ -73,6 +74,20 @@
           <template #icon><icon-thunderbolt /></template>
           批量执行{{ selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : '' }}
         </a-button>
+        <a-popconfirm
+          content="确定要删除选中的用例吗？此操作不可恢复。"
+          @ok="batchDeleteTestCases"
+        >
+          <a-button
+            type="primary"
+            status="danger"
+            :disabled="selectedRowKeys.length === 0"
+            style="margin-right: 12px"
+          >
+            <template #icon><icon-delete /></template>
+            批量删除{{ selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : '' }}
+          </a-button>
+        </a-popconfirm>
         <a-button type="primary" @click="showAddModal">
           <template #icon><icon-plus /></template>
           新增用例
@@ -269,12 +284,14 @@ const columns = [
 
 const formatDate = (dateStr: string) => dateStr ? new Date(dateStr).toLocaleString('zh-CN') : '-'
 
-const flattenModules = (modules: UiModule[], level = 0): UiModule[] => {
+const flattenModules = (modules: UiModule[], level = 0, visited = new Set<number>()): UiModule[] => {
   const result: UiModule[] = []
   for (const mod of modules) {
-    result.push({ ...mod, name: '  '.repeat(level) + mod.name })
+    if (visited.has(mod.id)) continue
+    visited.add(mod.id)
+    result.push({ ...mod, name: '\u00A0\u00A0'.repeat(level) + mod.name })
     if (mod.children?.length) {
-      result.push(...flattenModules(mod.children as UiModule[], level + 1))
+      result.push(...flattenModules(mod.children as UiModule[], level + 1, visited))
     }
   }
   return result
@@ -283,8 +300,9 @@ const flattenModules = (modules: UiModule[], level = 0): UiModule[] => {
 const fetchModules = async () => {
   if (!projectId.value) return
   try {
-    const res = await moduleApi.list({ project: projectId.value })
-    moduleOptions.value = flattenModules(extractListData<UiModule>(res))
+    const res = await moduleApi.tree(projectId.value)
+    const modules = extractResponseData<UiModule[]>(res) || []
+    moduleOptions.value = flattenModules(modules)
   } catch {
     Message.error('获取模块列表失败')
   }
@@ -563,6 +581,32 @@ const runBatchTestCases = async () => {
   }
 }
 
+/** 批量删除选中的用例 */
+const batchDeleteTestCases = async () => {
+  if (selectedRowKeys.value.length === 0) {
+    Message.warning('请先选择要删除的用例')
+    return
+  }
+
+  try {
+    const res = await testCaseApi.batchDelete(selectedRowKeys.value)
+    const result = extractResponseData(res)
+    
+    if (result) {
+      Message.success(result.message || `成功删除 ${selectedRowKeys.value.length} 个用例`)
+      // 清空选择
+      selectedRowKeys.value = []
+      // 刷新列表
+      fetchTestCases()
+    } else {
+      Message.error('批量删除失败')
+    }
+  } catch (error) {
+    console.error('批量删除用例出错:', error)
+    Message.error('批量删除用例时发生错误')
+  }
+}
+
 /** 处理用例执行结果 */
 const handleCaseResult = (data: any) => {
   const result = data.data?.func_args as CaseResultModel
@@ -587,8 +631,16 @@ const fetchEnvConfigs = async () => {
   try {
     const res = await envConfigApi.list({ project: projectId.value })
     envConfigs.value = extractListData<UiEnvironmentConfig>(res)
-    const defaultEnv = envConfigs.value.find(e => e.is_default)
-    if (defaultEnv) selectedEnvConfig.value = defaultEnv.id
+    // 优先选择默认环境，如果没有默认环境则选择第一个环境配置
+    if (!selectedEnvConfig.value && envConfigs.value.length > 0) {
+      const defaultEnv = envConfigs.value.find(e => e.is_default)
+      if (defaultEnv) {
+        selectedEnvConfig.value = defaultEnv.id
+      } else {
+        // 如果没有默认环境，选择第一个环境配置
+        selectedEnvConfig.value = envConfigs.value[0].id
+      }
+    }
   } catch {
     // 静默失败
   }
@@ -620,12 +672,16 @@ watch(() => props.selectedModuleId, (newVal) => {
 })
 
 /** 监听项目变化，重新加载数据 */
-watch(projectId, (newVal) => {
+watch(projectId, async (newVal) => {
   if (newVal) {
     pagination.current = 1
     fetchModules()
     fetchTestCases()
-    fetchEnvConfigs()
+    // 同时获取环境配置和执行器列表，并自动选择默认值
+    await Promise.all([
+      fetchEnvConfigs(),
+      fetchActuators()
+    ])
   }
 }, { immediate: true })
 
