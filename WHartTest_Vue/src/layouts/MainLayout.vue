@@ -124,11 +124,6 @@
             <a href="#" @click="checkProjectAndNavigate($event, '/requirements')">需求管理</a>
           </a-menu-item>
 
-          <a-menu-item key="ai-diagram" v-if="hasLangGraphChatPermission">
-            <template #icon><icon-mind-mapping /></template>
-            <a href="#" @click="checkProjectAndNavigate($event, '/ai-diagram')">智能图表</a>
-          </a-menu-item>
-
           <a-menu-item key="ui-automation" v-if="hasUiAutomationPermission">
             <template #icon><icon-computer /></template>
             <a href="#" @click="checkProjectAndNavigate($event, '/ui-automation')">UI自动化</a>
@@ -348,7 +343,6 @@ const activeMenu = computed(() => {
   if (path.startsWith('/permissions')) return 'permissions';
   if (path.startsWith('/llm-configs')) return 'llm-configs';
   if (path.startsWith('/langgraph-chat')) return 'langgraph-chat';
-  if (path.startsWith('/ai-diagram')) return 'ai-diagram';
   if (path.startsWith('/task-center')) return 'task-center';
   if (path.startsWith('/knowledge-management')) return 'knowledge-management';
   if (path.startsWith('/api-keys')) return 'api-keys';
