@@ -390,6 +390,10 @@ const canPreviewDiagram = computed(() => {
   return Boolean(diagramPayload.value?.xml);
 });
 
+const shouldWrapCodeBlocks = computed(() => {
+  return props.message.messageType === 'ai' && !props.message.isThinkingProcess;
+});
+
 const diagramPreviewUrl = computed(() => {
   if (!diagramPayload.value?.xml) return '';
   return `https://app.diagrams.net/?splash=0#R${encodeURIComponent(diagramPayload.value.xml)}`;
@@ -537,7 +541,9 @@ const formattedContent = computed(() => {
 
     // 使用marked解析Markdown (同步版本)
     let htmlContent = marked(processedContent) as string;
-    htmlContent = wrapCodeBlocksAsCollapsible(htmlContent, Boolean(props.message.isStreaming));
+    if (shouldWrapCodeBlocks.value) {
+      htmlContent = wrapCodeBlocksAsCollapsible(htmlContent, Boolean(props.message.isStreaming));
+    }
 
     // 使用DOMPurify净化HTML防止XSS攻击
     return DOMPurify.sanitize(htmlContent, {
