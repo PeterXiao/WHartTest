@@ -40,6 +40,8 @@ interface ChatMessage {
   isStreaming?: boolean;
   imageBase64?: string;
   imageDataUrl?: string;
+  imageBase64List?: string[];
+  imageDataUrls?: string[];
   isThinkingProcess?: boolean;
   isThinkingExpanded?: boolean;
   // Agent Step 专用字段

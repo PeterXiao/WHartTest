@@ -34,15 +34,29 @@
         <img :src="toolImageSrc" alt="工具截图" class="float-placeholder-thumb" />
         <span class="float-placeholder-label">悬浮预览中</span>
       </div>
-      <div v-else-if="message.imageDataUrl || message.imageBase64" class="message-image-container">
-        <img 
-          :src="imageDisplaySrc" 
-          alt="上传的图片" 
-          class="message-image" 
+      <div v-else-if="isToolImage" class="message-image-container">
+        <img
+          :src="toolImageSrc!"
+          alt="上传的图片"
+          class="message-image"
         />
         <div v-if="isToolImage" class="float-action-btn" @click="emit('float-tool-image', toolImageSrc!)">
           悬浮
         </div>
+      </div>
+      <div
+        v-else-if="messageImageSrcList.length > 0"
+        class="message-image-container"
+        :class="{ 'message-image-grid': messageImageSrcList.length > 1 }"
+      >
+        <img
+          v-for="(imageSrc, index) in messageImageSrcList"
+          :key="`${imageSrc}-${index}`"
+          :src="imageSrc"
+          :alt="`上传的图片 ${index + 1}`"
+          class="message-image"
+          :class="{ 'message-image-multi': messageImageSrcList.length > 1 }"
+        />
       </div>
       
       <div ref="messageBubbleRef" class="message-bubble">
@@ -176,6 +190,8 @@ interface ChatMessage {
   isStreaming?: boolean; // 标识是否正在流式输出
   imageBase64?: string; // 消息携带的图片(Base64)
   imageDataUrl?: string; // 完整的图片Data URL
+  imageBase64List?: string[]; // 多张图片(Base64)
+  imageDataUrls?: string[]; // 多张图片Data URL
   isThinkingProcess?: boolean; // 是否是思考过程
   isThinkingExpanded?: boolean; // 思考过程是否展开
   // Agent Step 专用字段
@@ -207,9 +223,13 @@ const emit = defineEmits<{
 }>();
 
 // 工具图片相关
+const toImageDataUrl = (base64?: string) => {
+  return base64 ? `data:image/jpeg;base64,${base64}` : null;
+};
+
 const toolImageSrc = computed(() => {
   if (props.message.messageType !== 'tool') return null;
-  return props.message.imageDataUrl || (props.message.imageBase64 ? `data:image/jpeg;base64,${props.message.imageBase64}` : null);
+  return props.message.imageDataUrl || toImageDataUrl(props.message.imageBase64);
 });
 
 const isToolImage = computed(() => props.message.messageType === 'tool' && !!toolImageSrc.value);
@@ -218,8 +238,23 @@ const isThisImageFloating = computed(() => {
   return isToolImage.value && props.floatingToolImageSrc === toolImageSrc.value;
 });
 
-const imageDisplaySrc = computed(() => {
-  return props.message.imageDataUrl || `data:image/jpeg;base64,${props.message.imageBase64}`;
+const messageImageSrcList = computed(() => {
+  if (props.message.messageType === 'tool') {
+    return [];
+  }
+
+  if (Array.isArray(props.message.imageDataUrls) && props.message.imageDataUrls.length > 0) {
+    return props.message.imageDataUrls.filter((item): item is string => Boolean(item));
+  }
+
+  if (Array.isArray(props.message.imageBase64List) && props.message.imageBase64List.length > 0) {
+    return props.message.imageBase64List
+      .map((item) => toImageDataUrl(item))
+      .filter((item): item is string => Boolean(item));
+  }
+
+  const singleImage = props.message.imageDataUrl || toImageDataUrl(props.message.imageBase64);
+  return singleImage ? [singleImage] : [];
 });
 
 // 工具图片被检测到时通知父组件
@@ -879,6 +914,17 @@ const formatToolMessage = (content: string) => {
   position: relative;
 }
 
+.message-image-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: min(100%, 360px);
+  width: min(100%, 360px);
+  box-shadow: none;
+  overflow: visible;
+  background: transparent;
+}
+
 .float-action-btn {
   position: absolute;
   top: 6px;
@@ -931,6 +977,15 @@ const formatToolMessage = (content: string) => {
   cursor: pointer;
   transition: transform 0.2s ease;
   object-fit: contain;
+}
+
+.message-image-multi {
+  width: 100%;
+  max-width: none;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  object-fit: cover;
 }
 
 .message-image:hover {
@@ -1532,11 +1587,22 @@ const formatToolMessage = (content: string) => {
   .message-image {
     max-width: min(100%, 320px);
   }
+
+  .message-image-grid {
+    max-width: min(100%, 300px);
+    width: min(100%, 300px);
+  }
 }
 
 @media (max-width: 480px) {
   .message-image {
     max-width: min(100%, 240px);
+  }
+
+  .message-image-grid {
+    grid-template-columns: 1fr 1fr;
+    max-width: min(100%, 240px);
+    width: min(100%, 240px);
   }
 }
 
@@ -1554,6 +1620,10 @@ const formatToolMessage = (content: string) => {
   justify-content: flex-end; /* 用户消息的图片靠右对齐 */
 }
 
+.user-message .message-image-container.message-image-grid {
+  margin-left: auto;
+}
+
 .user-message .message-image {
   max-width: min(100%, 400px);
 }
@@ -1562,6 +1632,10 @@ const formatToolMessage = (content: string) => {
 .ai-message .message-image-container {
   display: flex;
   justify-content: flex-start; /* AI消息的图片靠左对齐 */
+}
+
+.ai-message .message-image-container.message-image-grid {
+  margin-right: auto;
 }
 
 .thinking-header:hover {

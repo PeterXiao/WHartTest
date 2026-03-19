@@ -6,7 +6,11 @@ from django.test import SimpleTestCase
 from django.test.utils import override_settings
 
 from . import agent_loop_view
-from .agent_loop_view import _extract_linked_image_urls, _is_linked_image_url_allowed
+from .agent_loop_view import (
+    _extract_linked_image_urls,
+    _is_linked_image_url_allowed,
+    _normalize_uploaded_image_base64_list,
+)
 from .builtin_tools.skill_tools import (
     _build_skill_screenshots_dir,
     _prepare_skill_screenshots_dir,
@@ -107,6 +111,21 @@ class LinkedImageUrlExtractionTests(SimpleTestCase):
                     "https://localhost:8080：准备注册信息：用户名testuser014"
                 )
             )
+
+
+class UploadedImageNormalizationTests(SimpleTestCase):
+    def test_normalize_uploaded_images_merges_legacy_and_array_fields(self):
+        result = _normalize_uploaded_image_base64_list(
+            ["img-a", " img-b ", "", "img-a"],
+            "img-c",
+        )
+
+        self.assertEqual(result, ["img-a", "img-b", "img-c"])
+
+    def test_normalize_uploaded_images_accepts_legacy_single_image_only(self):
+        result = _normalize_uploaded_image_base64_list(None, " legacy-img ")
+
+        self.assertEqual(result, ["legacy-img"])
 
 
 class SkillScreenshotDirectoryTests(SimpleTestCase):
