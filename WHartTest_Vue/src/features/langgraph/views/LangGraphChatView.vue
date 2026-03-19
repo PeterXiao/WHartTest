@@ -173,6 +173,8 @@ import { useProjectStore } from '@/store/projectStore';
 import { useLlmConfigRefresh } from '@/composables/useLlmConfigRefresh';
 import { marked } from 'marked';
 import { IconFullscreen, IconFullscreenExit } from '@arco-design/web-vue/es/icon';
+import type { ToolFileAttachment } from '@/features/langgraph/utils/toolResultParser';
+import { parseToolResultDisplayPayload } from '@/features/langgraph/utils/toolResultParser';
 
 // 导入子组件
 import ChatSidebar from '../components/ChatSidebar.vue';
@@ -201,6 +203,7 @@ interface ChatMessage {
   isStreaming?: boolean;
   imageBase64?: string;
   imageDataUrl?: string;
+  fileAttachments?: ToolFileAttachment[];
   imageBase64List?: string[];
   imageDataUrls?: string[];
   isThinkingProcess?: boolean;
@@ -404,11 +407,16 @@ const normalizeHistoryContent = (historyItem: ChatHistoryMessage): string => {
   }
 
   if (historyItem.type === 'tool' && Array.isArray(rawContent)) {
-    const textItem = rawContent.find((item: any) =>
-      item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string'
+    const hasNonTextItem = rawContent.some((item: any) =>
+      item && typeof item === 'object' && item.type !== 'text'
     );
-    if (textItem?.text) {
-      return textItem.text;
+    if (!hasNonTextItem) {
+      const textParts = rawContent
+        .filter((item: any) => item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string')
+        .map((item: any) => item.text);
+      if (textParts.length > 0) {
+        return textParts.join('\n');
+      }
     }
   }
 
@@ -748,6 +756,10 @@ const enrichMessagesWithSeparators = (rawHistory: ChatHistoryMessage[], formatHi
     // 工具消息默认折叠
     if (historyItem.type === 'tool') {
       message.isExpanded = false;
+      const toolPayload = parseToolResultDisplayPayload(message.content);
+      if (toolPayload.fileAttachments.length > 0) {
+        message.fileAttachments = toolPayload.fileAttachments;
+      }
     }
 
     // 思考过程消息折叠状态
@@ -888,6 +900,7 @@ const solidifyStreamContent = () => {
             toolName: msg.toolName,
             isExpanded: msg.isExpanded,
             imageDataUrl: msg.imageDataUrl,
+            fileAttachments: msg.fileAttachments,
             isThinkingProcess: msg.isThinkingProcess,
             isThinkingExpanded: msg.isThinkingExpanded
           };
@@ -1667,6 +1680,7 @@ const displayedMessages = computed(() => {
             toolName: msg.toolName,
             isExpanded: msg.isExpanded,
             imageDataUrl: msg.imageDataUrl,
+            fileAttachments: msg.fileAttachments,
             isThinkingProcess: msg.isThinkingProcess,
             isThinkingExpanded: msg.isThinkingExpanded
           };
@@ -1790,11 +1804,15 @@ const handleNormalMessage = async (requestData: ChatRequest, originalMessage: st
       // 添加工具结果消息（如果有）
       if (data.tool_results && data.tool_results.length > 0) {
         for (const toolResult of data.tool_results) {
+          const toolPayload = parseToolResultDisplayPayload(toolResult.tool_output || toolResult.summary);
           messages.value.push({
-            content: toolResult.summary,
+            content: toolPayload.content || toolResult.summary,
             isUser: false,
             time: getCurrentTime(),
             messageType: 'tool',
+            toolName: toolResult.tool_name,
+            imageDataUrl: toolPayload.imageDataUrl,
+            fileAttachments: toolPayload.fileAttachments,
             isExpanded: false
           });
         }

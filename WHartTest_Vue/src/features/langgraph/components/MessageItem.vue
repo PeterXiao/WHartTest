@@ -74,6 +74,21 @@
             :key="message.content"
             v-html="formattedContent"
           ></div>
+          <div v-if="toolFileAttachments.length > 0" class="tool-file-list">
+            <div v-for="file in toolFileAttachments" :key="`${file.url}-${file.name}`" class="tool-file-item">
+              <div class="tool-file-main">
+                <div class="tool-file-name">{{ file.name }}</div>
+                <div class="tool-file-meta">
+                  <span v-if="file.mimeType">{{ file.mimeType }}</span>
+                  <span v-if="file.size !== undefined">{{ formatFileSize(file.size) }}</span>
+                </div>
+              </div>
+              <div class="tool-file-actions">
+                <a :href="file.url" target="_blank" rel="noopener noreferrer" class="tool-file-link">打开</a>
+                <a :href="file.url" :download="file.name" class="tool-file-link">下载</a>
+              </div>
+            </div>
+          </div>
           <div
             v-if="shouldCollapse"
             class="expand-button"
@@ -164,6 +179,8 @@ import { marked } from 'marked';
 import { brandLogoUrl } from '@/utils/assetUrl';
 import { extractDiagramToolPayload } from '../utils/diagramToolParser';
 import { extractHtmlPreviewContent } from '../utils/htmlPreviewParser';
+import type { ToolFileAttachment } from '../utils/toolResultParser';
+import { parseToolResultDisplayPayload } from '../utils/toolResultParser';
 
 // 配置marked以确保代码块正确渲染
 // marked v5+ API发生了变化，许多选项被移除或更改。
@@ -190,6 +207,7 @@ interface ChatMessage {
   isStreaming?: boolean; // 标识是否正在流式输出
   imageBase64?: string; // 消息携带的图片(Base64)
   imageDataUrl?: string; // 完整的图片Data URL
+  fileAttachments?: ToolFileAttachment[]; // 工具返回的可下载文件
   imageBase64List?: string[]; // 多张图片(Base64)
   imageDataUrls?: string[]; // 多张图片Data URL
   isThinkingProcess?: boolean; // 是否是思考过程
@@ -283,6 +301,22 @@ const htmlPreviewContent = computed(() => {
 const canPreviewHtml = computed(() => {
   return Boolean(htmlPreviewContent.value);
 });
+
+const toolFileAttachments = computed(() => {
+  if (props.message.messageType !== 'tool') return [];
+  if (Array.isArray(props.message.fileAttachments) && props.message.fileAttachments.length > 0) {
+    return props.message.fileAttachments;
+  }
+  return parseToolResultDisplayPayload(props.message.content).fileAttachments;
+});
+
+const formatFileSize = (size: number) => {
+  if (!Number.isFinite(size) || size < 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
 const messageBubbleRef = ref<HTMLElement | null>(null);
 let previewScrollRafId: number | null = null;
 
@@ -655,6 +689,16 @@ const handleStreamingMarkdown = (content: string) => {
 
 // 格式化工具消息
 const formatToolMessage = (content: string) => {
+  const parsedPayload = parseToolResultDisplayPayload(content);
+  if (parsedPayload.fileAttachments.length > 0 || parsedPayload.imageDataUrl) {
+    if (parsedPayload.content && parsedPayload.content.trim()) {
+      return parsedPayload.content;
+    }
+    if (parsedPayload.fileAttachments.length > 0) {
+      return `已生成 ${parsedPayload.fileAttachments.length} 个文件，可直接下载。`;
+    }
+  }
+
   try {
     // 先尝试解析为 JSON
     let jsonData = JSON.parse(content);
@@ -1112,6 +1156,62 @@ const formatToolMessage = (content: string) => {
   height: 40px;
   background: linear-gradient(transparent, color-mix(in srgb, var(--theme-surface) 78%, white 22%));
   pointer-events: none;
+}
+
+.tool-file-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e6eb;
+  border-radius: 10px;
+  background: #f7f8fa;
+}
+
+.tool-file-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-file-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d2129;
+  word-break: break-all;
+}
+
+.tool-file-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #86909c;
+  flex-wrap: wrap;
+}
+
+.tool-file-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tool-file-link {
+  font-size: 12px;
+  color: #165dff;
+  text-decoration: none;
+}
+
+.tool-file-link:hover {
+  text-decoration: underline;
 }
 
 

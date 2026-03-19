@@ -374,7 +374,7 @@ def process_mcp_tool_output(content: Any) -> tuple:
         tuple: (processed_content, summary)
     """
     # 处理 MCP 工具返回的列表格式，提取 text 内容
-    if isinstance(content, list) and len(content) > 0:
+    if isinstance(content, list) and len(content) == 1:
         first_item = content[0]
         if isinstance(first_item, dict) and first_item.get("type") == "text":
             text_content = first_item.get("text")
@@ -1554,6 +1554,8 @@ class AgentLoopStreamAPIView(View):
                             tool_results.append(
                                 {
                                     "summary": event.get("summary", ""),
+                                    "tool_output": event.get("tool_output"),
+                                    "tool_name": event.get("tool_name"),
                                     "step": event.get("step", 0),
                                 }
                             )
