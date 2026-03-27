@@ -30,7 +30,7 @@
 ![alt text](img_45.png)
 
 ### draw.io 图表生成（skill）
-
+注意！！！：原智能图表功能现已优化为统一加载skill的方式在对话中实现智能图表的生成，使用更加便捷。
 - **生成 .drawio 图表文件**：创建原生 draw.io 格式的图表（XML 格式的 mxGraphModel），支持各种图表类型：流程图、架构图、ER图、网络拓扑图、UML图等
 - **导出为多种格式**：PNG - 图片格式，支持嵌入 XML（可在 draw.io 中重新编辑）、SVG - 矢量图格式，支持嵌入 XML、PDF - 文档格式，支持嵌入 XML、JPG - 图片格式（不支持嵌入 XML）
 - **嵌入可编辑性**：对于 PNG、SVG、PDF 格式，使用 --embed-diagram 参数导出后，文件会包含完整的图表 XML，可以在 draw.io 中打开并继续编辑。
@@ -99,7 +99,16 @@
 
 1. **数据库迁移**：升级后请执行数据库迁移：`python manage.py migrate`
 2. **依赖安装**：需要重新安装依赖：`pip install -r requirements.txt`
-3. **Celery 配置**：任务中心依赖 Celery，需要配置Celery Beat 服务,采用docker部署方式自动部署Celery服务，采用源码部署需要单独部署Celery服务。
+3. 若需启用 `xinference`，请在 compose 文件中手动开启对应服务。
+4. **Celery 配置**：任务中心依赖 Celery，需要配置Celery Beat 服务,采用docker部署方式自动部署Celery服务，采用源码部署需要单独启动Celery服务。
+
+Windows源码部署启动Celery Beat 服务方式如下：
+
+开启两个终端窗口分别运行：
+
+uv run celery -A wharttest_django worker --loglevel=info -Q celery,task_center
+
+uv run celery -A wharttest_django beat --loglevel=info
 
 ## 🔗 相关资源
 
