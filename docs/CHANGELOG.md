@@ -56,9 +56,6 @@ uv run celery -A wharttest_django beat --loglevel=info
 
 ---
 
-**发布日期**：2026年3月  
-**版本号**：v2.2.0  
-**兼容升级**：支持从 v2.1.x 直接升级
 ## v2.1.0
 
 ### 版本概述

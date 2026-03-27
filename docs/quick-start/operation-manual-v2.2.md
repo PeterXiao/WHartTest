@@ -115,7 +115,3 @@ uv run celery -A wharttest_django beat --loglevel=info
 - **部署脚本**：使用 `run_compose.sh` 一键构建和启动服务
 
 ---
-
-**发布日期**：2026年3月  
-**版本号**：v2.2.0  
-**兼容升级**：支持从 v2.1.x 直接升级
