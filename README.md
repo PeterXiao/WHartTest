@@ -1,6 +1,5 @@
 # WHartTest - AI驱动的智能测试用例生成平台
 
-
 中文 | [English](README_EN.md)
 
 ## 项目简介
